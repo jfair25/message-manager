@@ -1,0 +1,178 @@
+/* ==========================================================================
+   Softer Midnight Dark Theme: Full Width Left-Aligned Layout Framework
+   ========================================================================== */
+
+:root {
+    --bg-main: #1e222b;         /* Lifted slate base */
+    --bg-card: #282d3a;         /* Soft graphite container fill */
+    --bg-hover: #33394a;        /* Elegant mid-tone focus highlight */
+    --text-primary: #f9fafb;    /* Clean, crisp off-white typography */
+    --text-secondary: #9ca3af;  /* Neutral muted gray for context text */
+    --accent: #4f46e5;          /* Sophisticated deep indigo tech hue */
+    --accent-hover: #4338ca;    /* Dark indigo operational color state */
+    --border-color: #374151;    /* Pronounced neutral grid border split */
+}
+
+/* Stripped scrolling rules so the extension naturally stretches to content */
+html, body {
+    height: auto !important;
+    overflow-y: hidden !important; 
+}
+
+body {
+    width: 100%;       
+    min-width: 480px;  
+    padding: 16px;
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    box-sizing: border-box;
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+/* --- Fixed 2-Column Grid Layout Structure --- */
+/* --- FIXED: Upgraded Column Track Grid Layout Structure --- */
+#msg-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr) !important; /* Keep messages grid neatly balanced in 2 rows */
+    gap: 8px;
+    margin-bottom: 4px; 
+}
+
+#geo-buttons {
+    display: grid;
+    /* CHANGE: Switch from repeat(2, 1fr) to repeat(3, 1fr) to split buttons across three equal horizontal tracks */
+    grid-template-columns: repeat(3, 1fr) !important; 
+    gap: 6px;                      /* Slightly tighten spacing gap for 3-column structural layout balance */
+    margin-bottom: 4px; 
+}
+
+/* --- Interactive Elements & Button Hierarchy --- */
+button {
+    width: 100%;
+    height: 34px;                  /* CHANGE: Slightly lower button height from 40px to 34px for optimal layout clearance */
+    font-size: 12px;               /* Scaled typography tracking down by 1px to cleanly fit wider labels like "Mountain View" */
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 6px;
+    background-color: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    transition: all 0.15s ease-in-out;
+}
+
+button:hover {
+    background-color: var(--bg-hover);
+    border-color: #4b5563;
+}
+/* --- Compact Copy Action Trigger --- */
+#copyBtn {
+    display: block;
+    width: auto !important;     
+    min-width: 120px;           
+    max-width: 160px;
+    height: 34px;               
+    font-size: 12px;            
+    font-weight: 600;
+    margin: 12px auto 0 auto;   
+    background-color: var(--accent);
+    border: none;
+    color: #ffffff;
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.2);
+}
+
+#copyBtn:hover {
+    background-color: var(--accent-hover);
+}
+
+/* --- Clean, Compact Back Link Component --- */
+.backBtn {
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--accent);
+    font-size: 12px;           
+    font-weight: 600;
+    text-transform: uppercase; 
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px; 
+    padding: 2px 0;
+    width: auto !important;    
+    height: auto !important;   
+    margin-bottom: 8px; 
+    transition: color 0.15s ease;
+}
+
+.backBtn:hover {
+    color: #60a5fa;
+    background: none !important;
+}
+
+.backBtn svg {
+    width: 12px;               
+    height: 12px; 
+    fill: currentColor; 
+}
+
+/* --- Layout Headers & Menus --- */
+#top-nav-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin-bottom: 12px; 
+}
+
+#menu-dots-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 6px;
+    width: 28px;  
+    height: 28px; 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+/* --- FIXED: Left-Aligned Baseline Form Layout Overrides --- */
+.input-wrapper {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important; /* Left aligns layout labels cleanly */
+    width: 100% !important;
+    text-align: left !important;
+}
+
+input, textarea, select {
+    padding: 6px 10px;          
+    width: 100% !important;             /* Restores standard full horizontal row width */
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: #ffffff;
+    border-radius: 6px;
+    font-size: 12px;            
+    outline: none;
+    margin-bottom: 6px;         
+    text-align: left !important;        /* Left aligns value text entries */
+}
+
+input {
+    height: 32px;               
+}
+
+[hidden] { 
+    display: none !important; 
+}
