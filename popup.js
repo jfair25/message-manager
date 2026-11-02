@@ -5,15 +5,79 @@ import { retreiveGlobalMsg } from './master.js';
 // Centralized navigation tracker to map which layout panel sits behind the back button
 let currentActiveView = 'msgs';
 
+async function scanActivePageContent() {
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!activeTab || !activeTab.id) return;
+
+    const [results] = await chrome.scripting.executeScript({
+      target: { tabId: activeTab.id },
+      func: () => document.body.innerText
+    });
+
+    if (!results || !results.result) return;
+    const pagePlainText = results.result;
+
+    const ldapMatch = pagePlainText.match(/(?:Drivers|LDAP|Operator):\s*([a-zA-Z0-9_\-\.\s\/]+)/i);
+    const carMatch = pagePlainText.match(/(?:Car|Vehicle|Unit)\s*(?:#|No\.?)?\s*:?\s*(\d+)/i);
+    const chargeMatch = pagePlainText.match(/(\d+)\s*%/);
+
+    if (ldapMatch && ldapMatch[1]) {
+      let cleanedLdap = ldapMatch[1].trim();
+      
+      // Strip any car details that bled into the line
+      cleanedLdap = cleanedLdap.replace(/\s*car\s*.*$/i, '');
+      
+      // Clean trailing slashes, dashes, and whitespace
+      cleanedLdap = cleanedLdap.replace(/\s*[\/\-]\s*[\-]*\s*$/, '').trim();
+      
+      localStorage.setItem('globalLdap', cleanedLdap);
+    } else {
+      localStorage.setItem('globalLdap', '');
+    }
+
+    if (carMatch && carMatch[1]) {
+      localStorage.setItem('globalCar', carMatch[1].trim());
+    } else {
+      localStorage.setItem('globalCar', '');
+    }
+
+    if (chargeMatch && chargeMatch[1]) {
+      localStorage.setItem('globalCharge', chargeMatch[1].trim());
+    } else {
+      localStorage.setItem('globalCharge', '');
+    }
+
+    // Reflect changes into the DOM conditional layouts
+    const ldapWrapper = document.getElementById('ldap');
+    const carWrapper = document.getElementById('car');
+    const chargeWrapper = document.getElementById('charge');
+
+    const ldapInput = ldapWrapper ? ldapWrapper.querySelector('input, select') : null;
+    const carInput = carWrapper ? carWrapper.querySelector('input, select') : null;
+    const chargeInput = chargeWrapper ? chargeWrapper.querySelector('input, select') : null;
+
+    if (ldapInput) ldapInput.value = localStorage.getItem('globalLdap') || '';
+    if (carInput) carInput.value = localStorage.getItem('globalCar') || '';
+    if (chargeInput) chargeInput.value = localStorage.getItem('globalCharge') || '';
+
+    console.table(localStorage);
+
+  } catch (error) {
+    console.error("Text extraction matrix failure:", error);
+  }
+}
+
+
+
+
 // Function to generate and insert message buttons
 function populateMsgs(containerId) {
   currentActiveView = 'msgs';
   const container = document.getElementById(containerId);
-  // Clear layout to prevent stacking nodes on backward transitions
   container.innerHTML = '';
   container.removeAttribute('hidden');
 
-  // Pull configurations from local cache or fall back directly to code configurations
   const savedData = localStorage.getItem('customMessages');
   const activeMessages = savedData ? JSON.parse(savedData) : messages;
 
@@ -51,7 +115,6 @@ function populateGeos(containerId) {
     return;
   }
 
-  // Read locations through cached changes or dynamic fallback variables
   const savedLocs = localStorage.getItem('customLocations');
   const activeLocations = savedLocs ? JSON.parse(savedLocs) : locations;
 
@@ -80,14 +143,12 @@ function miscellaneous(containerId) {
   const chargeContainer = document.getElementById('charge');
   const backContainer = document.getElementById('back');
 
-  // FIX: Forcefully hide ALL elements initially to clear stale layouts from previous screen lookups
   ldapContainer.hidden = true;
   carContainer.hidden = true;
   chargeContainer.hidden = true;
 
   const misc = localStorage.getItem("globalMisc");
 
-  // Router handles switching visibility flags strictly on demand
   if (misc == 1) {
     carContainer.hidden = false;
   } else if (misc == 2) {
@@ -106,8 +167,6 @@ function miscellaneous(containerId) {
 
   fields.forEach(fieldId => {
     const inputElement = document.getElementById(fieldId);
-    // Note: Make sure your HTML element matching fieldId is the actual text input tag 
-    // or select the input inside it cleanly if using structured div wrapper layouts.
     const storageKey = `global${fieldId.charAt(0).toUpperCase() + fieldId.slice(1)}`;
 
     if (inputElement) {
@@ -126,13 +185,10 @@ function miscellaneous(containerId) {
   container.hidden = false;
 }
 
-
-// Execution Routers
 function handleMsgButtonClick(content) {
   populateGeos('geo-buttons');
 }
 
-// Visual Toast System for Popup Context
 function showCopiedToast() {
   const toast = document.createElement('div');
   toast.textContent = 'Copied';
@@ -170,8 +226,7 @@ function handleGeoButtonClick(content) {
   miscellaneous('misc-fields');
 }
 
-// Integrated overlay settings view controller module logic supporting interactive tabs
-function launchMessagesSettingsPanel() {
+export function launchMessagesSettingsPanel() {
   let settingsOverlay = document.getElementById('global-settings-modal');
   if (!settingsOverlay) {
     settingsOverlay = document.createElement('div');
@@ -182,8 +237,8 @@ function launchMessagesSettingsPanel() {
       left: '12px',
       right: '12px',
       bottom: '12px',
-      backgroundColor: '#282d3a', // Cleanly matches your --bg-card slate tone variables
-      color: '#f9fafb',           // Matches --text-primary
+      backgroundColor: '#282d3a',
+      color: '#f9fafb',
       padding: '20px',
       borderRadius: '12px',
       boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
@@ -191,7 +246,7 @@ function launchMessagesSettingsPanel() {
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       boxSizing: 'border-box',
       overflowY: 'auto',
-      border: '1px solid #374151', // Matches --border-color grid lines
+      border: '1px solid #374151',
     });
     document.body.appendChild(settingsOverlay);
   }
@@ -202,12 +257,21 @@ function launchMessagesSettingsPanel() {
   const storedLocs = localStorage.getItem('customLocations');
   let runtimeLocations = storedLocs ? JSON.parse(storedLocs) : [...locations];
 
-  // Render modern segmented tab bar controller structure directly into the frame overlay
   settingsOverlay.innerHTML = `
     <div style="display: flex; gap: 8px; margin-bottom: 20px; background: #1e222b; padding: 4px; border-radius: 8px; border: 1px solid #374151;">
-      <button type="button" id="tab-btn-msgs" style="flex: 1; height: 32px; font-size: 12px; font-weight: 600; background: #4f46e5; color: white; border: none; border-radius: 6px; cursor: pointer; transition: all 0.2s;">✉️ Messages</button>
-      <button type="button" id="tab-btn-locs" style="flex: 1; height: 32px; font-size: 12px; font-weight: 600; background: transparent; color: #9ca3af; border: none; border-radius: 6px; cursor: pointer; transition: all 0.2s;">📍 Locations</button>
+      <button type="button" id="tab-btn-msgs" style="flex: 1; height: 32px; font-size: 12px; font-weight: 600; background: #4f46e5; color: white; border: none; border-radius: 6px; cursor: pointer;">✉️ Messages</button>
+      <button type="button" id="tab-btn-locs" style="flex: 1; height: 32px; font-size: 12px; font-weight: 600; background: transparent; color: #9ca3af; border: none; border-radius: 6px; cursor: pointer;">📍 Locations</button>
     </div>
+    <div id="settings-panel-msgs">
+      <div style="display:flex; justify-content:space-between; align-items: center; margin-bottom: 16px;">
+        <span style="font-weight: 700; font-size: 14px; color: #ffffff;">Message Card Configurations</span>
+        <button type="button" id="modal-create-btn" style="background-color:#10b981; border:none; color:#ffffff; font-size:11px; font-weight:700; padding:6px 12px; border-radius:6px; width:auto; height:28px;">➕ Add Card</button>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:6px; color:#9ca3af;">Select Message Row to Modify</label>
+        <select id="modal-msg-selector" style="width:100%; padding:10px; font-size:13px; border-radius:8px; border:1px solid #374151; background-color:#1e222b; color:#fff; outline:none;"></select>
+      </div>
+
 
     <!-- MESSAGES MANAGEMENT TAB PANEL CONTENT MODULE -->
     <div id="settings-panel-msgs">
@@ -445,151 +509,21 @@ function launchMessagesSettingsPanel() {
 }
 
 
-document.getElementById('extract-btn').addEventListener('click', async () => {
-  // 1. Query for the active tab currently open on screen
-  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-  if (!activeTab || !activeTab.url || activeTab.url.startsWith('chrome://')) {
-    console.warn("❌ Cannot scan restricted internal browser files.");
-    return;
-  }
-
-  // 2. Inject the text parsing function directly into the active webpage tab
-  chrome.scripting.executeScript({
-    target: { tabId: activeTab.id },
-    func: scanDOMFordriverCarAndChargeValues
-  }, (results) => {
-    if (!results || !results[0]) {
-      console.error("❌ Unable to scan the target page.");
-      return;
-    }
-
-    let { driver, car, charge } = results[0].result;
-
-    // 3. Clear existing runtime storage parameters before writing new ones
-    localStorage.removeItem('globalLdap');
-    localStorage.removeItem('globalCar');
-    localStorage.removeItem('globalCharge');
-
-    // 4. Target your popup UI HTML input fields
-    const ldapInput = document.getElementById('ldap-input');
-    const carInput = document.getElementById('car-input');
-    const chargeInput = document.getElementById('charge-input');
-
-    // 5. Evaluate and clean the driver extraction outcome
-    if (driver) {
-      // Remove any trailing car info
-      driver = driver.replace(/\s*\bcar\b.*/i, '').trim();
-      // Remove trailing empty slashes like " / --" or " / "
-      driver = driver.replace(/\s*\/\s*-*\s*$/, '').trim();
-    }
-
-    if (!driver || driver.trim() === '' || driver === '-- / --') {
-      driver = '';
-    }
-
-    // Save and bind driver
-    localStorage.setItem('globalLdap', driver);
-    if (ldapInput) ldapInput.value = driver;
-
-    // 6. Handle car extraction variables
-    if (car) {
-      localStorage.setItem('globalCar', car);
-      if (carInput) carInput.value = car;
-    } else {
-      if (carInput) carInput.value = '';
-    }
-
-    // 7. Handle charge percentage extraction variables
-    if (charge) {
-      localStorage.setItem('globalCharge', charge);
-      if (chargeInput) chargeInput.value = charge;
-    } else {
-      if (chargeInput) chargeInput.value = '';
-    }
-  });
-});
-
-// 8. Isolated Parsing Function (Executes inside the target webpage DOM tree)
-function scanDOMFordriverCarAndChargeValues() {
-  // Regex 1: Explicitly caps the extraction at 2 driver max.
-  const driverRegex = /\bdriver?[:\s]+([a-zA-Z0-9_#--]+)(?:\s*\/\s*([a-zA-Z0-9_#--]+))?/i;
-  
-  // Regex 2: Matches "car" followed by spaces, colons, or pound signs, capturing the digits
-  const carRegex = /\bcar[:\s#]+(\d+)/i;
-
-  // Regex 3: Matches any number that is 1 or 2 digits long sitting immediately before a % sign
-  const chargeRegex = /\b(\d{1,2})%/;
-  
-  const treeWalker = document.createTreeWalker(
-    document.body,
-    NodeFilter.SHOW_TEXT,
-    {
-      acceptNode: function(node) {
-        const parent = node.parentElement;
-        if (!parent) return NodeFilter.FILTER_REJECT;
-        const tag = parent.tagName.toLowerCase();
-        if (tag === 'script' || tag === 'style') return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    }
-  );
-
-  let extracteddriver = null;
-  let extractedCar = null;
-  let extractedCharge = null;
-  let currentNode;
-
-  while ((currentNode = treeWalker.nextNode())) {
-    const textContent = currentNode.nodeValue;
-
-    // Try to find driver token if not found yet
-    if (!extracteddriver) {
-      const driverMatch = textContent.match(driverRegex);
-      if (driverMatch) {
-        if (driverMatch[2]) {
-          extracteddriver = `${driverMatch[1].trim()} / ${driverMatch[2].trim()}`;
-        } else {
-          extracteddriver = driverMatch[1].trim();
-        }
-      }
-    }
-
-    // Try to find car numbers if not found yet
-    if (!extractedCar) {
-      const carMatch = textContent.match(carRegex);
-      if (carMatch) {
-        extractedCar = carMatch[1].trim();
-      }
-    }
-
-    // Try to find the charge metric if not found yet
-    if (!extractedCharge) {
-      const chargeMatch = textContent.match(chargeRegex);
-      if (chargeMatch) {
-        extractedCharge = chargeMatch[1].trim();
-      }
-    }
-
-    // Stop walking early if all three targets have been satisfied
-    if (extracteddriver && extractedCar && extractedCharge) break;
-  }
-
-  return { 
-    driver: extracteddriver, 
-    car: extractedCar, 
-    charge: extractedCharge 
-  };
-}
-
-
-
-
 // Setup Application Lifecycle Hooks
 document.addEventListener('DOMContentLoaded', () => {
   const backBtn = document.querySelector('.backBtn');
   const copyBtn = document.getElementById('copyBtn');
   const backContainer = document.getElementById('back');
+
+
+
+  const extractBtn = document.getElementById('extract-btn');
+  if (extractBtn) {
+    extractBtn.addEventListener('click', scanActivePageContent);
+    console.table(localStorage);
+
+  }
+
 
   const setMsgBtn = document.getElementById('set-msg-btn');
   if (setMsgBtn) {
@@ -620,6 +554,9 @@ document.addEventListener('DOMContentLoaded', () => {
     copyBtn.addEventListener('click', async () => {
       try {
         await retreiveGlobalMsg();
+
+        console.table(localStorage);
+
         const msg = localStorage.getItem("globalMsg") || '';
         const htmlBlob = new Blob([msg], { type: 'text/html' });
         await navigator.clipboard.write([
