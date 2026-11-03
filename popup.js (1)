@@ -1,0 +1,597 @@
+import { locations } from './master.js';
+import { messages } from './master.js';
+import { retreiveGlobalMsg } from './master.js';
+
+// Centralized navigation tracker to map which layout panel sits behind the back button
+let currentActiveView = 'msgs';
+
+// Function to generate and insert message buttons
+function populateMsgs(containerId) {
+  currentActiveView = 'msgs';
+  const container = document.getElementById(containerId);
+  // Clear layout to prevent stacking nodes on backward transitions
+  container.innerHTML = '';
+  container.removeAttribute('hidden');
+
+  // Pull configurations from local cache or fall back directly to code configurations
+  const savedData = localStorage.getItem('customMessages');
+  const activeMessages = savedData ? JSON.parse(savedData) : messages;
+
+  activeMessages.forEach(buttonHash => {
+    const button = document.createElement('button');
+    button.textContent = buttonHash.label;
+    button.className = `btn ${buttonHash.className}`;
+    button.dataset.content = buttonHash.content;
+    button.addEventListener('click', () => {
+      container.hidden = true;
+      localStorage.setItem('globalLabel', buttonHash.label);
+      localStorage.setItem("globalMisc", buttonHash.misc);
+      localStorage.setItem("globalGeo_on", buttonHash.geo_on);
+      handleMsgButtonClick(buttonHash.label);
+    });
+    container.appendChild(button);
+  });
+}
+
+// Function to generate and insert geo location buttons
+function populateGeos(containerId) {
+  const container = document.getElementById(containerId);
+  const backContainer = document.getElementById('back');
+  const geo_on = localStorage.getItem("globalGeo_on");
+  container.innerHTML = '';
+  backContainer.hidden = false;
+
+  if (geo_on == 1) {
+    currentActiveView = 'geos';
+    container.hidden = false;
+  } else {
+    currentActiveView = 'geos_skipped';
+    container.hidden = true;
+    miscellaneous('misc-fields');
+    return;
+  }
+
+  // Read locations through cached changes or dynamic fallback variables
+  const savedLocs = localStorage.getItem('customLocations');
+  const activeLocations = savedLocs ? JSON.parse(savedLocs) : locations;
+
+  activeLocations.forEach(buttonHash => {
+    const button = document.createElement('button');
+    button.textContent = buttonHash.label;
+    button.className = `btn ${buttonHash.className}`;
+    button.dataset.content = buttonHash.content;
+    button.addEventListener('click', () => {
+      container.hidden = true;
+      localStorage.setItem("globalGeo", buttonHash.content);
+      handleGeoButtonClick(buttonHash.content);
+    });
+    container.appendChild(button);
+  });
+}
+
+// Function to handle miscellaneous inputs and fields view layout
+function miscellaneous(containerId) {
+  if (currentActiveView !== 'geos_skipped') {
+    currentActiveView = 'misc';
+  }
+  const container = document.getElementById(containerId);
+  const ldapContainer = document.getElementById('ldap');
+  const carContainer = document.getElementById('car');
+  const chargeContainer = document.getElementById('charge');
+  const backContainer = document.getElementById('back');
+
+  // FIX: Forcefully hide ALL elements initially to clear stale layouts from previous screen lookups
+  ldapContainer.hidden = true;
+  carContainer.hidden = true;
+  chargeContainer.hidden = true;
+
+  const misc = localStorage.getItem("globalMisc");
+
+  // Router handles switching visibility flags strictly on demand
+  if (misc == 1) {
+    carContainer.hidden = false;
+  } else if (misc == 2) {
+    carContainer.hidden = false;
+    chargeContainer.hidden = false;
+  } else if (misc == 3) {
+    carContainer.hidden = false;
+    ldapContainer.hidden = false;
+  } else if (misc == 4) {
+    carContainer.hidden = false;
+    ldapContainer.hidden = false;
+    chargeContainer.hidden = false;
+  }
+
+  const fields = ['ldap', 'car', 'charge'];
+
+  fields.forEach(fieldId => {
+    const inputElement = document.getElementById(fieldId);
+    // Note: Make sure your HTML element matching fieldId is the actual text input tag 
+    // or select the input inside it cleanly if using structured div wrapper layouts.
+    const storageKey = `global${fieldId.charAt(0).toUpperCase() + fieldId.slice(1)}`;
+
+    if (inputElement) {
+      inputElement.value = localStorage.getItem(storageKey) || '';
+
+      if (!inputElement.dataset.hasListener) {
+        inputElement.addEventListener('input', (e) => {
+          localStorage.setItem(storageKey, e.target.value);
+        });
+        inputElement.dataset.hasListener = 'true';
+      }
+    }
+  });
+
+  backContainer.hidden = false;
+  container.hidden = false;
+}
+
+
+// Execution Routers
+function handleMsgButtonClick(content) {
+  populateGeos('geo-buttons');
+}
+
+// Visual Toast System for Popup Context
+function showCopiedToast() {
+  const toast = document.createElement('div');
+  toast.textContent = 'Copied';
+  Object.assign(toast.style, {
+    position: 'fixed',
+    bottom: '15px',
+    right: '15px',
+    backgroundColor: '#2c3539',
+    color: '#ffffff',
+    padding: '8px 16px',
+    borderRadius: '6px',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+    fontFamily: 'sans-serif',
+    fontSize: '13px',
+    zIndex: '999999',
+    transition: 'opacity 0.3s ease, transform 0.3s ease',
+    opacity: '0',
+    transform: 'translateY(5px)'
+  });
+  document.body.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+  });
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(5px)';
+    setTimeout(() => toast.remove(), 300);
+  }, 1500);
+}
+
+function handleGeoButtonClick(content) {
+  miscellaneous('misc-fields');
+}
+
+// Integrated overlay settings view controller module logic supporting interactive tabs
+function launchMessagesSettingsPanel() {
+  let settingsOverlay = document.getElementById('global-settings-modal');
+  if (!settingsOverlay) {
+    settingsOverlay = document.createElement('div');
+    settingsOverlay.id = 'global-settings-modal';
+    Object.assign(settingsOverlay.style, {
+      position: 'fixed',
+      top: '12px',
+      left: '12px',
+      right: '12px',
+      bottom: '12px',
+      backgroundColor: '#282d3a', // Cleanly matches your --bg-card slate tone variables
+      color: '#f9fafb',           // Matches --text-primary
+      padding: '20px',
+      borderRadius: '12px',
+      boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
+      zIndex: '2000000',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      boxSizing: 'border-box',
+      overflowY: 'auto',
+      border: '1px solid #374151', // Matches --border-color grid lines
+    });
+    document.body.appendChild(settingsOverlay);
+  }
+
+  const stored = localStorage.getItem('customMessages');
+  let runtimeCollection = stored ? JSON.parse(stored) : [...messages];
+
+  const storedLocs = localStorage.getItem('customLocations');
+  let runtimeLocations = storedLocs ? JSON.parse(storedLocs) : [...locations];
+
+  // Render modern segmented tab bar controller structure directly into the frame overlay
+  settingsOverlay.innerHTML = `
+    <div style="display: flex; gap: 8px; margin-bottom: 20px; background: #1e222b; padding: 4px; border-radius: 8px; border: 1px solid #374151;">
+      <button type="button" id="tab-btn-msgs" style="flex: 1; height: 32px; font-size: 12px; font-weight: 600; background: #4f46e5; color: white; border: none; border-radius: 6px; cursor: pointer; transition: all 0.2s;">✉️ Messages</button>
+      <button type="button" id="tab-btn-locs" style="flex: 1; height: 32px; font-size: 12px; font-weight: 600; background: transparent; color: #9ca3af; border: none; border-radius: 6px; cursor: pointer; transition: all 0.2s;">📍 Locations</button>
+    </div>
+
+    <!-- MESSAGES MANAGEMENT TAB PANEL CONTENT MODULE -->
+    <div id="settings-panel-msgs">
+      <div style="display:flex; justify-content:space-between; align-items: center; margin-bottom: 16px;">
+        <span style="font-weight: 700; font-size: 14px; letter-spacing: -0.01em; color: #ffffff;">Message Card Configurations</span>
+        <button type="button" id="modal-create-btn" style="background-color:#10b981; border:none; color:#ffffff; font-size:11px; font-weight:700; cursor:pointer; padding:6px 12px; border-radius:6px; width:auto; height:28px;">➕ Add Card</button>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Select Message Row to Modify</label>
+        <select id="modal-msg-selector" style="width:100%; padding:10px; font-size:13px; border-radius:8px; border:1px solid #374151; background-color:#1e222b; color:#fff; font-family:sans-serif; outline:none;"></select>
+      </div>
+      <div id="modal-editor-fields" style="background:#1e222b; padding:16px; border-radius:10px; border:1px solid #374151; margin-bottom:16px;"></div>
+    </div>
+
+    <!-- GEOGRAPHIC LOCATIONS TAB PANEL CONTENT MODULE -->
+    <div id="settings-panel-locs" style="display: none;">
+      <div style="display:flex; justify-content:space-between; align-items: center; margin-bottom: 16px;">
+        <span style="font-weight: 700; font-size: 14px; letter-spacing: -0.01em; color: #ffffff;">Location Map Reference Markers</span>
+        <button type="button" id="modal-loc-create-btn" style="background-color:#10b981; border:none; color:#ffffff; font-size:11px; font-weight:700; cursor:pointer; padding:6px 12px; border-radius:6px; width:auto; height:28px;">➕ Add Location</button>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Select Location Row to Modify</label>
+        <select id="modal-loc-selector" style="width:100%; padding:10px; font-size:13px; border-radius:8px; border:1px solid #374151; background-color:#1e222b; color:#fff; font-family:sans-serif; outline:none;"></select>
+      </div>
+      <div id="modal-loc-editor-fields" style="background:#1e222b; padding:16px; border-radius:10px; border:1px solid #374151; margin-bottom:16px;"></div>
+    </div>
+
+    <!-- FOOTER PANEL ACTIONS HUD ACTION BAR -->
+    <div style="display: flex; gap: 10px; justify-content: flex-end; padding-top: 14px; border-top: 1px solid #374151; margin-top: 20px;">
+      <button id="modal-cancel-btn" style="padding: 0 16px; width:auto; height: 36px; font-size: 12px; font-weight:600; border: 1px solid #374151; background: transparent; color:#9ca3af; border-radius: 6px; cursor: pointer;">Cancel</button>
+      <button id="modal-save-btn" style="padding: 0 16px; width:auto; height: 36px; font-size: 12px; font-weight:600; border: none; background: #4f46e5; color: #fff; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 6px rgba(79,70,229,0.3);">Save Changes</button>
+    </div>
+  `;
+  const msgSelector = document.getElementById('modal-msg-selector');
+  const locSelector = document.getElementById('modal-loc-selector');
+  const panelMsgs = document.getElementById('settings-panel-msgs');
+  const panelLocs = document.getElementById('settings-panel-locs');
+  const tabBtnMsgs = document.getElementById('tab-btn-msgs');
+  const tabBtnLocs = document.getElementById('tab-btn-locs');
+
+  let activeMsgIndex = 0;
+  let activeLocIndex = 0;
+
+  function stashActiveMsgChanges() {
+    if (runtimeCollection.length === 0 || activeMsgIndex >= runtimeCollection.length) return;
+    const lbl = document.getElementById('m-field-lbl');
+    const geo = document.getElementById('m-toggle-geo');
+    const misc = document.getElementById('m-field-misc');
+    const cnt = document.getElementById('m-field-cnt');
+
+    if (lbl) runtimeCollection[activeMsgIndex].label = lbl.value.trim() || `Button #${activeMsgIndex + 1}`;
+    if (geo) runtimeCollection[activeMsgIndex].geo_on = geo.dataset.state;
+    if (misc) runtimeCollection[activeMsgIndex].misc = misc.value;
+    if (cnt) runtimeCollection[activeMsgIndex].content = cnt.value.trim();
+  }
+
+  function stashActiveLocChanges() {
+    if (runtimeLocations.length === 0 || activeLocIndex >= runtimeLocations.length) return;
+    const lbl = document.getElementById('l-field-lbl');
+    const cnt = document.getElementById('l-field-cnt');
+
+    if (lbl) runtimeLocations[activeLocIndex].label = lbl.value.trim() || `Location #${activeLocIndex + 1}`;
+    if (cnt) runtimeLocations[activeLocIndex].content = cnt.value.trim();
+  }
+
+  function populateMsgDropdown(targetIdx) {
+    msgSelector.innerHTML = '';
+    runtimeCollection.forEach((msg, idx) => {
+      const opt = document.createElement('option');
+      opt.value = idx;
+      opt.textContent = msg.label || `[Blank Card Row #${idx + 1}]`;
+      if (idx === targetIdx) opt.selected = true;
+      msgSelector.appendChild(opt);
+    });
+    activeMsgIndex = targetIdx;
+  }
+
+  function determineLocationClassName(labelString) {
+    const dynamicSanitized = labelString.replace(/[^a-zA-Z\s]/g, '').trim().toUpperCase();
+    if (!dynamicSanitized) return "LOC";
+    return dynamicSanitized.substring(0, 3);
+  }
+
+  function populateLocDropdown(targetIdx) {
+    locSelector.innerHTML = '';
+    runtimeLocations.forEach((loc, idx) => {
+      const opt = document.createElement('option');
+      opt.value = idx;
+      opt.textContent = loc.label || `[Blank Location Row #${idx + 1}]`;
+      if (idx === targetIdx) opt.selected = true;
+      locSelector.appendChild(opt);
+    });
+    activeLocIndex = targetIdx;
+  }
+  function refreshMsgForm() {
+    if (runtimeCollection.length === 0) {
+      document.getElementById('modal-editor-fields').innerHTML = `<div style="font-size:12px; color:#9ca3af; text-align:center; padding:20px;">No active messages found.</div>`;
+      return;
+    }
+    activeMsgIndex = parseInt(msgSelector.value, 10);
+    const item = runtimeCollection[activeMsgIndex];
+
+    document.getElementById('modal-editor-fields').innerHTML = `
+      <div style="margin-bottom: 12px;">
+        <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Button Name</label>
+        <input type="text" id="m-field-lbl" value="${item.label}" style="width:100%; box-sizing:border-box; padding:8px 12px; font-size:13px; border:1px solid #374151; border-radius:6px; background-color:#282d3a; color:#fff; outline:none;">
+      </div>
+      <div style="margin-bottom: 12px;">
+        <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Geographic Panel Step</label>
+        <button type="button" id="m-toggle-geo" data-state="${item.geo_on == '1' ? '1' : '0'}" style="width:100%; height:34px; font-size:12px; border-radius:6px; font-weight:700; cursor:pointer; text-align:center; transition:all 0.15s;"></button>
+      </div>
+      <div style="margin-bottom: 14px;">
+        <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Conditional Input Fields</label>
+        <select id="m-field-misc" style="width:100%; padding:8px 12px; font-size:13px; border:1px solid #374151; border-radius:6px; background-color:#282d3a; color:#fff; outline:none; font-family:sans-serif;">
+          <option value="0" ${item.misc == "0" ? 'selected' : ''}>None (Copy Immediately)</option>
+          <option value="1" ${item.misc == "1" ? 'selected' : ''}>Car Number Only</option>
+          <option value="2" ${item.misc == "2" ? 'selected' : ''}>Car Number + Charge %</option>
+          <option value="3" ${item.misc == "3" ? 'selected' : ''}>Car Number + Driver LDAP</option>
+          <option value="4" ${item.misc == "4" ? 'selected' : ''}>Car Number + Driver LDAP + Charge %</option>
+        </select>
+      </div>
+      <div style="margin-bottom: 14px;">
+        <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Template Content Text</label>
+        <textarea id="m-field-cnt" rows="4" style="width:100%; box-sizing:border-box; padding:8px 12px; font-size:12px; border:1px solid #374151; border-radius:6px; background-color:#282d3a; color:#fff; font-family:monospace; resize:vertical; outline:none; line-height:1.5;">${item.content || ''}</textarea>
+      </div>
+      <button type="button" id="modal-delete-btn" style="background-color:#ef4444; border:none; color:white; font-size:12px; font-weight:600; cursor:pointer; padding:0 12px; border-radius:6px; width:auto; height:32px; margin-top:4px;">🗑️ Delete Message</button>
+    `;
+
+    const geoToggleBtn = document.getElementById('m-toggle-geo');
+    function updateToggleUI(state) {
+      if (state === "1") {
+        geoToggleBtn.textContent = "📍 Geo Panel: ENABLED";
+        geoToggleBtn.style.backgroundColor = "#10b981";
+        geoToggleBtn.style.color = "#ffffff";
+        geoToggleBtn.style.border = "none";
+        geoToggleBtn.dataset.state = "1";
+      } else {
+        geoToggleBtn.textContent = "⏭️ Geo Panel: SKIPPED";
+        geoToggleBtn.style.backgroundColor = "#374151";
+        geoToggleBtn.style.color = "#9ca3af";
+        geoToggleBtn.style.border = "1px solid #4b5563";
+        geoToggleBtn.dataset.state = "0";
+      }
+    }
+    updateToggleUI(geoToggleBtn.dataset.state);
+    geoToggleBtn.addEventListener('click', () => {
+      updateToggleUI(geoToggleBtn.dataset.state === "1" ? "0" : "1");
+    });
+
+    document.getElementById('modal-delete-btn').addEventListener('click', () => {
+      runtimeCollection.splice(activeMsgIndex, 1);
+      populateMsgDropdown(Math.max(0, activeMsgIndex - 1));
+      refreshMsgForm();
+    });
+  }
+
+  function refreshLocForm() {
+    if (runtimeLocations.length === 0) {
+      document.getElementById('modal-loc-editor-fields').innerHTML = `<div style="font-size:12px; color:#9ca3af; text-align:center; padding:20px;">No active locations found.</div>`;
+      return;
+    }
+    activeLocIndex = parseInt(locSelector.value, 10);
+    const item = runtimeLocations[activeLocIndex];
+
+    document.getElementById('modal-loc-editor-fields').innerHTML = `
+      <div style="margin-bottom: 12px;">
+        <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Location Label Name</label>
+        <input type="text" id="l-field-lbl" value="${item.label || ''}" style="width:100%; box-sizing:border-box; padding:8px 12px; font-size:13px; border:1px solid #374151; border-radius:6px; background-color:#282d3a; color:#fff; outline:none;">
+      </div>
+      <div style="margin-bottom: 14px;">
+        <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Macro Replacement Value ({geo})</label>
+        <input type="text" id="l-field-cnt" value="${item.content || ''}" style="width:100%; box-sizing:border-box; padding:8px 12px; font-size:13px; border:1px solid #374151; border-radius:6px; background-color:#282d3a; color:#fff; outline:none;">
+      </div>
+      <button type="button" id="modal-loc-delete-btn" style="background-color:#ef4444; border:none; color:white; font-size:12px; font-weight:600; cursor:pointer; padding:0 12px; border-radius:6px; width:auto; height:32px; margin-top:4px;">🗑️ Delete Location</button>
+    `;
+
+    document.getElementById('modal-loc-delete-btn').addEventListener('click', () => {
+      runtimeLocations.splice(activeLocIndex, 1);
+      populateLocDropdown(Math.max(0, activeLocIndex - 1));
+      refreshLocForm();
+    });
+  }
+  tabBtnMsgs.addEventListener('click', () => {
+    stashActiveLocChanges();
+    tabBtnMsgs.style.background = '#4f46e5'; tabBtnMsgs.style.color = 'white';
+    tabBtnLocs.style.background = 'transparent'; tabBtnLocs.style.color = '#9ca3af';
+    panelMsgs.style.display = 'block'; panelLocs.style.display = 'none';
+    refreshMsgForm();
+  });
+
+  tabBtnLocs.addEventListener('click', () => {
+    stashActiveMsgChanges();
+    tabBtnLocs.style.background = '#4f46e5'; tabBtnLocs.style.color = 'white';
+    tabBtnMsgs.style.background = 'transparent'; tabBtnMsgs.style.color = '#9ca3af';
+    panelLocs.style.display = 'block'; panelMsgs.style.display = 'none';
+    refreshLocForm();
+  });
+
+  document.getElementById('modal-create-btn').addEventListener('click', () => {
+    stashActiveMsgChanges();
+    runtimeCollection.push({ label: "Custom Message " + (runtimeCollection.length + 1), className: "Custom", misc: "0", geo_on: "0", content: "{geo}<b>Custom text</b> for car#{car}." });
+    populateMsgDropdown(runtimeCollection.length - 1); refreshMsgForm();
+  });
+
+  document.getElementById('modal-loc-create-btn').addEventListener('click', () => {
+    stashActiveLocChanges();
+    runtimeLocations.push({ label: "New City " + (runtimeLocations.length + 1), className: "NEW_LOC", content: "<b>NEW AVOS</b>- " });
+    populateLocDropdown(runtimeLocations.length - 1); refreshLocForm();
+  });
+
+  msgSelector.addEventListener('change', () => { stashActiveMsgChanges(); refreshMsgForm(); });
+  locSelector.addEventListener('change', () => { stashActiveLocChanges(); refreshLocForm(); });
+
+  populateMsgDropdown(0); refreshMsgForm();
+  populateLocDropdown(0); refreshLocForm();
+
+  document.getElementById('modal-save-btn').addEventListener('click', () => {
+    stashActiveMsgChanges();
+    stashActiveLocChanges();
+
+    runtimeLocations.forEach(loc => {
+      if (loc.className === "NEW_LOC" || !loc.className) {
+        loc.className = determineLocationClassName(loc.label);
+      }
+    });
+
+    localStorage.setItem('customMessages', JSON.stringify(runtimeCollection));
+    localStorage.setItem('customLocations', JSON.stringify(runtimeLocations));
+
+    settingsOverlay.remove();
+    populateMsgs('msg-buttons');
+  });
+
+  document.getElementById('modal-cancel-btn').addEventListener('click', () => settingsOverlay.remove());
+}
+
+
+
+
+// Setup Application Lifecycle Hooks
+document.addEventListener('DOMContentLoaded', () => {
+  const backBtn = document.querySelector('.backBtn');
+  const copyBtn = document.getElementById('copyBtn');
+  const backContainer = document.getElementById('back');
+
+   const extractBtn = document.getElementById('extractBtn');
+  if (extractBtn) {
+    extractBtn.addEventListener('click', () => {
+      try {
+        // 1. Create a secure, invisible layout scratchpad element to grab paste actions
+        const scraper = document.createElement('textarea');
+        scraper.style.position = 'fixed';
+        scraper.style.opacity = '0';
+        document.body.appendChild(scraper);
+        
+        // 2. Drive focal context onto it and run a direct browser clipboard read paste
+        scraper.focus();
+        const pasteSuccess = document.execCommand('paste');
+        const text = scraper.value ? scraper.value.trim() : '';
+        
+        // Wipe the temporary node immediately to preserve DOM hygiene
+        document.body.removeChild(scraper);
+
+        if (!pasteSuccess || !text) {
+          throw new Error('Paste command failed or clipboard context is empty.');
+        }
+
+        // Variables to house final extracted values
+        let d = '';
+        let c = '';
+        let p = '';
+
+        // 3. Dual-Parsing Router Logic
+        if (text.includes('|')) {
+          // FORMAT A: Pipe-delimited string (e.g., "keeshon|15097|20")
+          const parts = text.split('|');
+          d = parts[0] ? parts[0].trim() : '';
+          c = parts[1] ? parts[1].trim() : '';
+          p = parts[2] ? parts[2].trim() : '';
+        } else {
+          // FORMAT B: Raw text block scanner fallback
+          const driverMatch = text.match(/Drivers\b\s*[:\-]?\s*(\w+(?:\s+\w+)?)/i);
+          const carMatch = text.match(/Car\s+(\d+)/i);
+          const percentMatch = text.match(/(\d{2})%/);
+
+          d = driverMatch ? driverMatch[1].trim() : '';
+          c = carMatch ? carMatch[1].trim() : '';
+          p = percentMatch ? percentMatch[1].trim() : '';
+        }
+
+        // 4. Sanitize placeholder marks (like "-- / --" or "--") out of driver name string
+        if (/^[\s\-\/]+$/.test(d)) {
+          d = '';
+        }
+
+        // 5. Connect cleanly with your existing layout target input selectors
+        const ldapInput = document.getElementById('ldap-input');
+        const carInput = document.getElementById('car-input');
+        const chargeInput = document.getElementById('charge-input');
+
+        // 6. Inject the cleaned data and synchronize state with localStorage balances
+        if (ldapInput) {
+          ldapInput.value = d;
+          localStorage.setItem('globalLdap', d);
+        }
+        if (carInput) {
+          carInput.value = c;
+          localStorage.setItem('globalCar', c);
+        }
+        if (chargeInput) {
+          chargeInput.value = p;
+          localStorage.setItem('globalCharge', p);
+        }
+
+        // 7. Fire a visual success status directly on the button label
+        extractBtn.textContent = '✅ Data Extracted!';
+        extractBtn.style.borderColor = '#10b981';
+        setTimeout(() => {
+          extractBtn.textContent = '📋 Extract Clipboard Data';
+          extractBtn.style.borderColor = 'var(--accent)';
+        }, 1200);
+
+      } catch (err) {
+        console.error('Extraction lifecycle failure:', err);
+        alert('Extraction failed. Verify "clipboardRead" is active in manifest.json, reload, and try again.');
+      }
+    });
+  }
+
+  const setMsgBtn = document.getElementById('set-msg-btn');
+  if (setMsgBtn) {
+    setMsgBtn.addEventListener('click', launchMessagesSettingsPanel);
+  }
+
+  const menuDotsBtn = document.getElementById('menu-dots-btn');
+  if (menuDotsBtn) {
+    menuDotsBtn.addEventListener('click', launchMessagesSettingsPanel);
+  }
+
+  backBtn.addEventListener('click', () => {
+    if (currentActiveView === 'geos') {
+      document.getElementById('geo-buttons').hidden = true;
+      backContainer.hidden = true;
+      populateMsgs('msg-buttons');
+    } else if (currentActiveView === 'misc') {
+      document.getElementById('misc-fields').hidden = true;
+      populateGeos('geo-buttons');
+    } else if (currentActiveView === 'geos_skipped') {
+      document.getElementById('misc-fields').hidden = true;
+      backContainer.hidden = true;
+      populateMsgs('msg-buttons');
+    }
+  });
+
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await retreiveGlobalMsg();
+        const msg = localStorage.getItem("globalMsg") || '';
+        const htmlBlob = new Blob([msg], { type: 'text/html' });
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'text/html': htmlBlob })
+        ]);
+
+        const messageElement = document.getElementById('message');
+        if (messageElement) {
+          messageElement.removeAttribute('hidden');
+        }
+        showCopiedToast();
+
+        const keysToClean = ['globalLabel', 'globalMisc', 'globalGeo_on', 'globalGeo', 'globalLdap', 'globalCar', 'globalCharge', 'globalMsg'];
+        keysToClean.forEach(k => localStorage.removeItem(k));
+
+        const inputFields = ['ldap', 'car', 'charge'];
+        inputFields.forEach(fieldId => {
+          const inputElement = document.getElementById(fieldId);
+          if (inputElement) {
+            inputElement.value = '';
+          }
+        });
+      } catch (err) {
+        console.error('Failed to copy text layout: ', err);
+      }
+    });
+  }
+  populateMsgs('msg-buttons');
+});
