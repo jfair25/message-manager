@@ -35,27 +35,25 @@ body {
     box-sizing: border-box;
 }
 /* --- Fixed 2-Column Grid Layout Structure --- */
-/* --- FIXED: Upgraded Column Track Grid Layout Structure --- */
-#msg-buttons {
+#msg-buttons, #geo-buttons {
     display: grid;
-    grid-template-columns: repeat(2, 1fr) !important; /* Keep messages grid neatly balanced in 2 rows */
+    grid-template-columns: repeat(2, 1fr) !important;
     gap: 8px;
     margin-bottom: 4px; 
 }
 
 #geo-buttons {
     display: grid;
-    /* CHANGE: Switch from repeat(2, 1fr) to repeat(3, 1fr) to split buttons across three equal horizontal tracks */
-    grid-template-columns: repeat(3, 1fr) !important; 
-    gap: 6px;                      /* Slightly tighten spacing gap for 3-column structural layout balance */
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 6px;
     margin-bottom: 4px; 
 }
 
 /* --- Interactive Elements & Button Hierarchy --- */
 button {
     width: 100%;
-    height: 34px;                  /* CHANGE: Slightly lower button height from 40px to 34px for optimal layout clearance */
-    font-size: 12px;               /* Scaled typography tracking down by 1px to cleanly fit wider labels like "Mountain View" */
+    height: 40px;              
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     border-radius: 6px;
@@ -65,7 +63,7 @@ button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 8px;
     transition: all 0.15s ease-in-out;
 }
 
@@ -175,4 +173,15 @@ input {
 
 [hidden] { 
     display: none !important; 
+}
+/* Drag and drop feedback styling transitions */
+button[draggable="true"] {
+    user-select: none;
+    -webkit-user-drag: element;
+}
+
+button.dragging {
+    opacity: 0.4 !important;
+    border: 1px dashed var(--accent) !important;
+    background-color: var(--bg-main) !important;
 }
