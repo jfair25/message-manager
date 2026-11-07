@@ -1,0 +1,235 @@
+/* ==========================================================================
+   Two-Column Clean Dashboard Architecture
+   ========================================================================== */
+
+:root {
+    --bg-main: #14161d;         /* Deeper backdrop baseline for high contrast */
+    --bg-sidebar: #1e222b;      /* Lifted slate panel matching popup styling */
+    --bg-card: #282d3a;         /* Soft graphite input fields */
+    --bg-hover: #33394a;        /* Focused row selection indicator */
+    --text-primary: #f9fafb;    /* Off-white typography */
+    --text-secondary: #9ca3af;  /* Neutral muted gray context labeling */
+    --accent: #4f46e5;          /* Deep indigo */
+    --accent-hover: #4338ca;    
+    --border-color: #2e3545;    /* Subtle separation lines */
+    --danger: #ef4444;          
+    --danger-hover: #dc2626;    
+    --success: #10b981;         
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+}
+
+/* --- Structural Dashboard Grid Container --- */
+.dashboard-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* --- Left Column Sidebar Layout --- */
+.dashboard-sidebar {
+    background-color: var(--bg-sidebar);
+    border-right: 1px solid var(--border-color);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+}
+
+.brand-header h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.brand-header .sub-heading {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Permanent List Selection Style Elements */
+.panel-view-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 200px;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+/* Turns the native drop-down picker into an open scrollable listbox */
+.listbox-style {
+    width: 100%;
+    flex: 1;
+    background-color: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 4px;
+    outline: none;
+}
+
+.listbox-style option {
+    padding: 8px 10px;
+    margin-bottom: 2px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.listbox-style option:checked {
+    background-color: var(--accent) !important;
+    color: #ffffff;
+}
+
+/* Navigation System Control Blocks */
+.tab-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    background-color: rgba(0,0,0,0.15);
+    padding: 3px;
+    border-radius: 8px;
+}
+
+.tab-container button {
+    padding: 6px 0;
+    font-size: 11px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+/* --- Right Column Form Body Content --- */
+.dashboard-main {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background-color: var(--bg-main);
+    position: relative;
+}
+
+#form-scroll-container {
+    flex: 1;
+    padding: 40px;
+    overflow-y: auto;
+    max-width: 680px;
+    width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+
+/* Footer Execution Bar */
+.settings-footer {
+    padding: 16px 40px;
+    background-color: rgba(20, 22, 29, 0.8);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+/* Functional Buttons Overrides */
+button {
+    height: 34px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.1s ease-in-out;
+}
+
+#modal-save-btn { background-color: var(--accent); color: white; border: none; padding: 0 20px; font-weight: 600;}
+#modal-save-btn:hover { background-color: var(--accent-hover); }
+#modal-cancel-btn { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); padding: 0 16px; }
+#modal-cancel-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+#modal-create-btn, #modal-loc-create-btn { height: 24px; padding: 0 8px; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border-color); color: white; }
+#modal-create-btn:hover, #modal-loc-create-btn:hover { background: var(--bg-hover); }
+
+.backup-section { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.backup-section button { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); font-size: 11px; }
+.backup-section button:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* Custom Switch Components */
+.switch-wrapper { display: flex; align-items: center; justify-content: space-between; background-color: var(--bg-card); border: 1px solid var(--border-color); padding: 10px 14px; border-radius: 6px; width: 100%; box-sizing: border-box; }
+.switch-label-text { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.toggle-switch-btn { position: relative; width: 44px !important; height: 24px !important; background-color: #4b5563 !important; border-radius: 12px; border: none !important; padding: 0; }
+.toggle-switch-btn::after { content: ''; position: absolute; top: 3px; left: 4px; width: 18px; height: 18px; background-color: #ffffff; border-radius: 50%; transition: transform 0.2s ease; }
+.toggle-switch-btn[data-state="1"] { background-color: var(--success) !important; }
+.toggle-switch-btn[data-state="1"]::after { transform: translateX(18px); }
+
+/* Inputs overrides */
+select, input[type="text"], textarea { width: 100%; padding: 10px 12px; font-size: 13px; border: 1px solid var(--border-color); border-radius: 6px; background-color: var(--bg-card); color: #ffffff; outline: none; box-sizing: border-box; }
+select:focus, input[type="text"]:focus, textarea:focus { border-color: var(--accent); }
+label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; color: var(--text-secondary); }
+
+
+/* --- Drag and Drop List Styling Blocks --- */
+.custom-drag-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background-color: rgba(0, 0, 0, 0.15);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 6px;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 240px;
+}
+
+.drag-item-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: var(--bg-card);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: grab;
+    user-select: none;
+    color: var(--text-primary);
+    transition: background-color 0.1s;
+}
+
+.drag-item-row:hover {
+    background-color: var(--bg-hover);
+}
+
+.drag-item-row.selected-active {
+    background-color: var(--accent);
+    color: #ffffff;
+    border-color: rgba(255,255,255,0.1);
+}
+
+.drag-item-row.dragging-state {
+    opacity: 0.4;
+    border: 1px dashed var(--accent);
+}

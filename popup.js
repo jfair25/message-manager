@@ -1,37 +1,128 @@
-import { locations } from './master.js';
-import { messages } from './master.js';
-import { retreiveGlobalMsg } from './master.js';
+import { categories, locations, messages, retreiveGlobalMsg } from './master.js';
 
-// Centralized navigation tracker to map which layout panel sits behind the back button
-let currentActiveView = 'msgs';
+// Global state navigation routers
+let currentActiveView = 'categories';
+let selectedCategory = '';
 
-function populateMsgs(containerId) {
+// Pre-query frequently accessed layout containers (Cache)
+const DOM = {
+  catSection: document.getElementById('category-container'),
+  msgContainer: document.getElementById('msg-buttons'),
+  geoContainer: document.getElementById('geo-buttons'),
+  miscFields: document.getElementById('misc-fields'),
+  backBtnContainer: document.getElementById('back'),
+  catButtons: document.getElementById('category-buttons'),
+  successMsg: document.getElementById('message'),
+  inputs: {
+    ldap: document.getElementById('ldap'),
+    car: document.getElementById('car'),
+    charge: document.getElementById('charge')
+  }
+};
+
+function populateCategories() {
+  currentActiveView = 'categories';
+
+  const catSection = document.getElementById('category-container');
+  const msgContainer = document.getElementById('msg-buttons');
+  const backContainer = document.getElementById('back');
+
+  // Show categories, hide messages list layer
+  if (catSection) catSection.removeAttribute('hidden');
+  if (msgContainer) msgContainer.setAttribute('hidden', 'true');
+  if (backContainer) backContainer.setAttribute('hidden', 'true');
+
+  const containerButtons = document.getElementById('category-buttons');
+  if (!containerButtons) return;
+  containerButtons.innerHTML = '';
+
+  const savedCats = localStorage.getItem('customCategories');
+  const activeCategories = savedCats ? JSON.parse(savedCats) : categories;
+
+  // Document fragment grouping optimization to batch single-pass DOM paints
+  const fragment = document.createDocumentFragment();
+  
+  activeCategories.forEach((cat, idx) => {
+    const button = document.createElement('button');
+    button.textContent = cat.label;
+    button.className = 'btn category-btn-style';
+
+    // 1. ATTACH DRAG AND DROP CONFIGURATIONS 
+    button.draggable = true;
+
+    button.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', idx);
+      button.classList.add('dragging');
+    });
+
+    button.addEventListener('dragend', () => {
+      button.classList.remove('dragging');
+    });
+
+    button.addEventListener('dragover', (e) => {
+      e.preventDefault(); // Required to unlock dropping frames safely
+    });
+
+    button.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const originIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      const destIdx = idx;
+
+      if (originIdx !== destIdx && !isNaN(originIdx)) {
+        // Re-arrange the underlying arrays positions mapping layout structure
+        const itemToMove = activeCategories[originIdx];
+        activeCategories.splice(originIdx, 1);
+        activeCategories.splice(destIdx, 0, itemToMove);
+        
+        // Push state modification straight into memory and re-paint the buttons loop
+        localStorage.setItem('customCategories', JSON.stringify(activeCategories));
+        populateCategories();
+      }
+    });
+
+    // Standard navigation click handler
+    button.addEventListener('click', (e) => {
+      // Prevent running standard panel click transitions if dropping an item
+      if (e.target.classList.contains('dragging')) return;
+      
+      if (catSection) catSection.setAttribute('hidden', 'true');
+      selectedCategory = cat.id;
+      populateMsgsFiltered();
+    });
+    
+    fragment.appendChild(button);
+  });
+  
+  DOM.catButtons.appendChild(fragment);
+}
+
+
+function populateMsgsFiltered() {
   currentActiveView = 'msgs';
-  const container = document.getElementById(containerId);
-  container.innerHTML = '';
-  container.removeAttribute('hidden');
+  if (!DOM.msgContainer) return;
+
+  DOM.msgContainer.innerHTML = '';
+  DOM.msgContainer.removeAttribute('hidden');
+  if (DOM.backBtnContainer) DOM.backBtnContainer.removeAttribute('hidden');
 
   const savedData = localStorage.getItem('customMessages');
   const activeMessages = savedData ? JSON.parse(savedData) : messages;
+  const filtered = activeMessages.filter(m => m.category === selectedCategory);
 
-  activeMessages.forEach((buttonHash, idx) => {
+  if (filtered.length === 0) {
+    DOM.msgContainer.innerHTML = `<div style="grid-column: span 2; text-align:center; color: var(--text-secondary); font-size:12px; padding:20px;">Empty Category</div>`;
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  filtered.forEach((buttonHash, idx) => {
     const button = document.createElement('button');
     button.textContent = buttonHash.label;
     button.className = `btn ${buttonHash.className}`;
-    button.dataset.content = buttonHash.content;
-    
-    // Attach standard drag configurations
+
+    // --- ATTACH DRAG AND DROP HANDLERS TO MESSAGES ---
     button.draggable = true;
 
-    button.addEventListener('click', () => {
-      container.hidden = true;
-      localStorage.setItem('globalLabel', buttonHash.label);
-      localStorage.setItem("globalMisc", buttonHash.misc);
-      localStorage.setItem("globalGeo_on", buttonHash.geo_on);
-      handleMsgButtonClick(buttonHash.label);
-    });
-
-    // Drag-and-drop lifecycle mechanics
     button.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/plain', idx);
       button.classList.add('dragging');
@@ -47,59 +138,61 @@ function populateMsgs(containerId) {
 
     button.addEventListener('drop', (e) => {
       e.preventDefault();
-      const originIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
-      const destIdx = idx;
+      const originFilteredIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      const destFilteredIdx = idx;
 
-      if (originIdx !== destIdx) {
-        const itemToMove = activeMessages[originIdx];
-        activeMessages.splice(originIdx, 1);
-        activeMessages.splice(destIdx, 0, itemToMove);
-        
-        localStorage.setItem('customMessages', JSON.stringify(activeMessages));
-        populateMsgs(containerId);
+      if (originFilteredIdx !== destFilteredIdx && !isNaN(originFilteredIdx)) {
+        // Track the targets using global index lookups relative to the master set
+        const itemToMove = filtered[originFilteredIdx];
+        const globalOriginIdx = activeMessages.indexOf(itemToMove);
+        const globalDestIdx = activeMessages.indexOf(filtered[destFilteredIdx]);
+
+        if (globalOriginIdx !== -1 && globalDestIdx !== -1) {
+          activeMessages.splice(globalOriginIdx, 1);
+          activeMessages.splice(globalDestIdx, 0, itemToMove);
+          
+          localStorage.setItem('customMessages', JSON.stringify(activeMessages));
+          populateMsgsFiltered();
+        }
       }
     });
 
-    container.appendChild(button);
+    button.addEventListener('click', () => {
+      DOM.msgContainer.setAttribute('hidden', 'true');
+      localStorage.setItem('globalLabel', buttonHash.label);
+      localStorage.setItem("globalMisc", buttonHash.misc);
+      localStorage.setItem("globalGeo_on", buttonHash.geo_on);
+
+      if (buttonHash.geo_on == 1) {
+        populateGeos();
+      } else {
+        localStorage.setItem("globalGeo", "");
+        miscellaneous();
+      }
+    });
+    fragment.appendChild(button);
   });
+  DOM.msgContainer.appendChild(fragment);
 }
 
-function populateGeos(containerId) {
-  const container = document.getElementById(containerId);
-  const backContainer = document.getElementById('back');
-  const geo_on = localStorage.getItem("globalGeo_on");
-  container.innerHTML = '';
-  backContainer.hidden = false;
-
-  if (geo_on == 1) {
-    currentActiveView = 'geos';
-    container.hidden = false;
-  } else {
-    currentActiveView = 'geos_skipped';
-    container.hidden = true;
-    miscellaneous('misc-fields');
-    return;
-  }
+function populateGeos() {
+  currentActiveView = 'geos';
+  if (!DOM.geoContainer) return;
+  DOM.geoContainer.innerHTML = '';
+  DOM.geoContainer.removeAttribute('hidden');
 
   const savedLocs = localStorage.getItem('customLocations');
   const activeLocations = savedLocs ? JSON.parse(savedLocs) : locations;
 
+  const fragment = document.createDocumentFragment();
   activeLocations.forEach((buttonHash, idx) => {
     const button = document.createElement('button');
     button.textContent = buttonHash.label;
     button.className = `btn ${buttonHash.className}`;
-    button.dataset.content = buttonHash.content;
-    
-    // Attach standard drag configurations
+
+    // --- ATTACH DRAG AND DROP HANDLERS TO GEOS ---
     button.draggable = true;
 
-    button.addEventListener('click', () => {
-      container.hidden = true;
-      localStorage.setItem("globalGeo", buttonHash.content);
-      handleGeoButtonClick(buttonHash.content);
-    });
-
-    // Drag-and-drop lifecycle mechanics
     button.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/plain', idx);
       button.classList.add('dragging');
@@ -118,147 +211,79 @@ function populateGeos(containerId) {
       const originIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
       const destIdx = idx;
 
-      if (originIdx !== destIdx) {
+      if (originIdx !== destIdx && !isNaN(originIdx)) {
         const itemToMove = activeLocations[originIdx];
         activeLocations.splice(originIdx, 1);
         activeLocations.splice(destIdx, 0, itemToMove);
         
         localStorage.setItem('customLocations', JSON.stringify(activeLocations));
-        populateGeos(containerId);
+        populateGeos();
       }
     });
 
-    container.appendChild(button);
+    button.addEventListener('click', () => {
+      DOM.geoContainer.setAttribute('hidden', 'true');
+      localStorage.setItem("globalGeo", buttonHash.content);
+      miscellaneous();
+    });
+    fragment.appendChild(button);
   });
+  DOM.geoContainer.appendChild(fragment);
 }
 
 
-// Function to handle miscellaneous inputs and fields view layout
-function miscellaneous(containerId) {
-  if (currentActiveView !== 'geos_skipped') {
-    currentActiveView = 'misc';
+function miscellaneous() {
+  const geo_on = localStorage.getItem("globalGeo_on");
+  currentActiveView = (geo_on == 1) ? 'misc' : 'misc_skipped_geos';
+
+  if (DOM.inputs.ldap) DOM.inputs.ldap.setAttribute('hidden', 'true');
+  if (DOM.inputs.car) DOM.inputs.car.setAttribute('hidden', 'true');
+  if (DOM.inputs.charge) DOM.inputs.charge.setAttribute('hidden', 'true');
+
+  const misc = parseInt(localStorage.getItem("globalMisc"), 10) || 0;
+  
+  // Clean matching map structure layout conditions
+  if (misc === 1 || misc === 2 || misc === 3 || misc === 4) {
+    if (DOM.inputs.car) DOM.inputs.car.removeAttribute('hidden');
   }
-  const container = document.getElementById(containerId);
-  const ldapContainer = document.getElementById('ldap');
-  const carContainer = document.getElementById('car');
-  const chargeContainer = document.getElementById('charge');
-  const backContainer = document.getElementById('back');
-
-  // Forcefully hide ALL elements initially to clear stale layouts from previous screen lookups
-  ldapContainer.hidden = true;
-  carContainer.hidden = true;
-  chargeContainer.hidden = true;
-
-  const misc = localStorage.getItem("globalMisc");
-
-  // Router handles switching visibility flags strictly on demand
-  if (misc == 1) {
-    carContainer.hidden = false;
-  } else if (misc == 2) {
-    carContainer.hidden = false;
-    chargeContainer.hidden = false;
-  } else if (misc == 3) {
-    carContainer.hidden = false;
-    ldapContainer.hidden = false;
-  } else if (misc == 4) {
-    carContainer.hidden = false;
-    ldapContainer.hidden = false;
-    chargeContainer.hidden = false;
+  if (misc === 2 || misc === 4) {
+    if (DOM.inputs.charge) DOM.inputs.charge.removeAttribute('hidden');
+  }
+  if (misc === 3 || misc === 4) {
+    if (DOM.inputs.ldap) DOM.inputs.ldap.removeAttribute('hidden');
   }
 
-  const fields = ['ldap', 'car', 'charge'];
-
-  fields.forEach(fieldId => {
-    const inputElement = document.getElementById(fieldId);
-    // Note: Make sure your HTML element matching fieldId is the actual text input tag 
-    // or select the input inside it cleanly if using structured div wrapper layouts.
+  ['ldap', 'car', 'charge'].forEach(fieldId => {
+    const wrapper = DOM.inputs[fieldId];
+    if (!wrapper) return;
+    const inputElement = wrapper.querySelector('input');
     const storageKey = `global${fieldId.charAt(0).toUpperCase() + fieldId.slice(1)}`;
 
     if (inputElement) {
       inputElement.value = localStorage.getItem(storageKey) || '';
-
       if (!inputElement.dataset.hasListener) {
-        inputElement.addEventListener('input', (e) => {
-          localStorage.setItem(storageKey, e.target.value);
-        });
+        inputElement.addEventListener('input', (e) => localStorage.setItem(storageKey, e.target.value));
         inputElement.dataset.hasListener = 'true';
       }
     }
   });
 
-  backContainer.hidden = false;
-  container.hidden = false;
+  if (DOM.miscFields) DOM.miscFields.removeAttribute('hidden');
 }
-
-
-// Execution Routers
-function handleMsgButtonClick(content) {
-  populateGeos('geo-buttons');
-}
-
-// Visual Toast System for Popup Context
-function showCopiedToast() {
-  const toast = document.createElement('div');
-  toast.textContent = 'Copied';
-  Object.assign(toast.style, {
-    position: 'fixed',
-    bottom: '15px',
-    right: '15px',
-    backgroundColor: '#2c3539',
-    color: '#ffffff',
-    padding: '8px 16px',
-    borderRadius: '6px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-    fontFamily: 'sans-serif',
-    fontSize: '13px',
-    zIndex: '999999',
-    transition: 'opacity 0.3s ease, transform 0.3s ease',
-    opacity: '0',
-    transform: 'translateY(5px)'
-  });
-  document.body.appendChild(toast);
-
-  requestAnimationFrame(() => {
-    toast.style.opacity = '1';
-    toast.style.transform = 'translateY(0)';
-  });
-
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateY(5px)';
-    setTimeout(() => toast.remove(), 300);
-  }, 1500);
-}
-
-function handleGeoButtonClick(content) {
-  miscellaneous('misc-fields');
-}
-
-function launchMessagesSettingsPanel() {
-  chrome.windows.create({
-    url: chrome.runtime.getURL("settings.html"),
-    type: "popup", // Spawns a clean app container window shell without tab strips or URL fields
-    width: 820,
-    height: 850,
-    focused: true
-  });
-}
-
-
 
 function autoExtractClipboardData() {
   try {
-    //  Build scratchpad textarea layout element to catch system clipboard contents safely
+    // 1. Build an invisible scratchpad textarea to safely catch system clipboard contents
     const scraper = document.createElement('textarea');
     scraper.style.position = 'fixed';
     scraper.style.opacity = '0';
     document.body.appendChild(scraper);
-    
-    // Shift programmatic focus onto the scraper node and fire paste sequence
+
+    // 2. Programmatically shift browser focus onto the node and fire a native paste command
     scraper.focus();
     const pasteSuccess = document.execCommand('paste');
     const text = scraper.value ? scraper.value.trim() : '';
-    
+
     document.body.removeChild(scraper);
 
     if (!pasteSuccess || !text) return;
@@ -267,7 +292,7 @@ function autoExtractClipboardData() {
     let c = '';
     let p = '';
 
-    //  Router sorts format pipelines seamlessly
+    // 3. Parse data using your custom delimiter or regex match rules
     if (text.includes('|')) {
       const parts = text.split('|');
       d = parts[0] ? parts[0].trim() : '';
@@ -287,27 +312,18 @@ function autoExtractClipboardData() {
       d = '';
     }
 
-    const ldapWrapper = document.getElementById('ldap');
-    const carWrapper = document.getElementById('car');
-    const chargeWrapper = document.getElementById('charge');
+    // 4. Inject parsed parameters straight into DOM node cache wrappers
+    const inputsMap = { ldap: d, car: c, charge: p };
+    const storageKeys = { ldap: 'globalLdap', car: 'globalCar', charge: 'globalCharge' };
 
-    const ldapInput = ldapWrapper ? ldapWrapper.querySelector('input') : null;
-    const carInput = carWrapper ? carWrapper.querySelector('input') : null;
-    const chargeInput = chargeWrapper ? chargeWrapper.querySelector('input') : null;
-
-    // If elements are parsed cleanly, inject details and store them
-    if (d && ldapInput) {
-      ldapInput.value = d;
-      localStorage.setItem('globalLdap', d);
-    }
-    if (c && carInput) {
-      carInput.value = c;
-      localStorage.setItem('globalCar', c);
-    }
-    if (p && chargeInput) {
-      chargeInput.value = p;
-      localStorage.setItem('globalCharge', p);
-    }
+    Object.keys(inputsMap).forEach(key => {
+      const val = inputsMap[key];
+      if (val && DOM.inputs[key]) {
+        const field = DOM.inputs[key].querySelector('input');
+        if (field) field.value = val;
+        localStorage.setItem(storageKeys[key], val);
+      }
+    });
 
   } catch (err) {
     console.warn('Silent auto-extraction omitted or blocked by host permissions:', err);
@@ -315,39 +331,36 @@ function autoExtractClipboardData() {
 }
 
 
+function showCopiedToast() {
+  const toast = document.createElement('div');
+  toast.textContent = 'Copied!';
+  Object.assign(toast.style, {
+    position: 'fixed', bottom: '15px', right: '15px', backgroundColor: '#2c3539',
+    color: '#ffffff', padding: '8px 16px', borderRadius: '6px',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.3)', fontFamily: 'sans-serif', fontSize: '13px',
+    zIndex: '999999', transition: 'opacity 0.2s ease, transform 0.2s ease',
+    opacity: '0', transform: 'translateY(5px)'
+  });
+  document.body.appendChild(toast);
 
-// Setup Application Lifecycle Hooks
+  requestAnimationFrame(() => {
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+  });
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(5px)';
+    setTimeout(() => toast.remove(), 200);
+  }, 1200);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const backBtn = document.querySelector('.backBtn');
-  const copyBtn = document.getElementById('copyBtn');
-  const backContainer = document.getElementById('back');
-
- autoExtractClipboardData();
-
-  const setMsgBtn = document.getElementById('set-msg-btn');
-  if (setMsgBtn) {
-    setMsgBtn.addEventListener('click', launchMessagesSettingsPanel);
-  }
-
   const menuDotsBtn = document.getElementById('menu-dots-btn');
-  if (menuDotsBtn) {
-    menuDotsBtn.addEventListener('click', launchMessagesSettingsPanel);
-  }
+  const copyBtn = document.getElementById('copyBtn');
 
-  backBtn.addEventListener('click', () => {
-    if (currentActiveView === 'geos') {
-      document.getElementById('geo-buttons').hidden = true;
-      backContainer.hidden = true;
-      populateMsgs('msg-buttons');
-    } else if (currentActiveView === 'misc') {
-      document.getElementById('misc-fields').hidden = true;
-      populateGeos('geo-buttons');
-    } else if (currentActiveView === 'geos_skipped') {
-      document.getElementById('misc-fields').hidden = true;
-      backContainer.hidden = true;
-      populateMsgs('msg-buttons');
-    }
-  });
+  autoExtractClipboardData();
 
   if (copyBtn) {
     copyBtn.addEventListener('click', async () => {
@@ -355,30 +368,60 @@ document.addEventListener('DOMContentLoaded', () => {
         await retreiveGlobalMsg();
         const msg = localStorage.getItem("globalMsg") || '';
         const htmlBlob = new Blob([msg], { type: 'text/html' });
-        await navigator.clipboard.write([
-          new ClipboardItem({ 'text/html': htmlBlob })
-        ]);
+        await navigator.clipboard.write([new ClipboardItem({ 'text/html': htmlBlob })]);
 
-        const messageElement = document.getElementById('message');
-        if (messageElement) {
-          messageElement.removeAttribute('hidden');
+        if (DOM.successMsg) {
+          DOM.successMsg.removeAttribute('hidden');
+          DOM.successMsg.textContent = 'Copied!';
         }
+
         showCopiedToast();
 
         const keysToClean = ['globalLabel', 'globalMisc', 'globalGeo_on', 'globalGeo', 'globalLdap', 'globalCar', 'globalCharge', 'globalMsg'];
         keysToClean.forEach(k => localStorage.removeItem(k));
 
-        const inputFields = ['ldap', 'car', 'charge'];
-        inputFields.forEach(fieldId => {
-          const inputElement = document.getElementById(fieldId);
-          if (inputElement) {
-            inputElement.value = '';
+        Object.keys(DOM.inputs).forEach(key => {
+          if (DOM.inputs[key]) {
+            const el = DOM.inputs[key].querySelector('input');
+            if (el) el.value = '';
           }
         });
+
+        setTimeout(() => {
+          if (DOM.successMsg) DOM.successMsg.setAttribute('hidden', 'true');
+        }, 2500);
+
       } catch (err) {
-        console.error('Failed to copy text layout: ', err);
+        console.error('Copy metrics compilation loop interrupted:', err);
       }
     });
   }
-  populateMsgs('msg-buttons');
+
+  if (menuDotsBtn) {
+    menuDotsBtn.addEventListener('click', () => {
+      chrome.windows.create({
+        url: chrome.runtime.getURL("settings.html"),
+        type: "popup", width: 920, height: 650, focused: true
+      });
+    });
+  }
+
+  if (backBtn) {
+    backBtn.addEventListener('click', () => {
+      if (currentActiveView === 'msgs') {
+        populateCategories();
+      } else if (currentActiveView === 'geos') {
+        if (DOM.geoContainer) DOM.geoContainer.setAttribute('hidden', 'true');
+        populateMsgsFiltered();
+      } else if (currentActiveView === 'misc') {
+        if (DOM.miscFields) DOM.miscFields.setAttribute('hidden', 'true');
+        populateGeos();
+      } else if (currentActiveView === 'misc_skipped_geos') {
+        if (DOM.miscFields) DOM.miscFields.setAttribute('hidden', 'true');
+        populateMsgsFiltered();
+      }
+    });
+  }
+
+  populateCategories();
 });

@@ -1,88 +1,145 @@
-import { locations, messages } from './master.js';
+import { categories, locations, messages } from './master.js';
 
+let runtimeCategories = [];
 let runtimeCollection = [];
 let runtimeLocations = [];
+
+let activeCatIndex = 0;
 let activeMsgIndex = 0;
 let activeLocIndex = 0;
 
-const msgSelector = document.getElementById('modal-msg-selector');
-const locSelector = document.getElementById('modal-loc-selector');
-const panelMsgs = document.getElementById('settings-panel-msgs');
-const panelLocs = document.getElementById('settings-panel-locs');
-const tabBtnMsgs = document.getElementById('tab-btn-msgs');
-const tabBtnLocs = document.getElementById('tab-btn-locs');
+// Shared structural reordering lifecycle handlers pipeline
+function bindDragLifecycleHandlers(element, index, dataArray, storageKey, rebuildCallback) {
+  element.draggable = true;
 
-const exportBtn = document.getElementById('export-json-btn');
-const importBtn = document.getElementById('import-json-btn');
-const filePicker = document.getElementById('hidden-file-picker');
-
-function stashActiveMsgChanges() {
-  if (runtimeCollection.length === 0 || activeMsgIndex >= runtimeCollection.length) return;
-  const lbl = document.getElementById('m-field-lbl');
-  const geo = document.getElementById('m-toggle-geo');
-  const misc = document.getElementById('m-field-misc');
-  const cnt = document.getElementById('m-field-cnt');
-
-  if (lbl) runtimeCollection[activeMsgIndex].label = lbl.value.trim() || `Button #${activeMsgIndex + 1}`;
-  if (geo) runtimeCollection[activeMsgIndex].geo_on = geo.dataset.state;
-  if (misc) runtimeCollection[activeMsgIndex].misc = misc.value;
-  if (cnt) runtimeCollection[activeMsgIndex].content = cnt.value.trim();
-}
-
-function stashActiveLocChanges() {
-  if (runtimeLocations.length === 0 || activeLocIndex >= runtimeLocations.length) return;
-  const lbl = document.getElementById('l-field-lbl');
-  const cnt = document.getElementById('l-field-cnt');
-
-  if (lbl) runtimeLocations[activeLocIndex].label = lbl.value.trim() || `Location #${activeLocIndex + 1}`;
-  if (cnt) runtimeLocations[activeLocIndex].content = cnt.value.trim();
-}
-
-function populateMsgDropdown(targetIdx) {
-  msgSelector.innerHTML = '';
-  runtimeCollection.forEach((msg, idx) => {
-    const opt = document.createElement('option');
-    opt.value = idx;
-    opt.textContent = msg.label || `[Blank Card Row #${idx + 1}]`;
-    if (idx === targetIdx) opt.selected = true;
-    msgSelector.appendChild(opt);
+  element.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/plain', index);
+    element.classList.add('dragging-state');
   });
-  activeMsgIndex = targetIdx;
+
+  element.addEventListener('dragend', () => element.classList.remove('dragging-state'));
+  element.addEventListener('dragover', (e) => e.preventDefault());
+
+  element.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const sourceIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    if (sourceIdx !== index && !isNaN(sourceIdx)) {
+      const movedItem = dataArray[sourceIdx];
+      dataArray.splice(sourceIdx, 1);
+      dataArray.splice(index, 0, movedItem);
+      localStorage.setItem(storageKey, JSON.stringify(dataArray));
+      rebuildCallback();
+    }
+  });
 }
 
-function populateLocDropdown(targetIdx) {
-  locSelector.innerHTML = '';
-  runtimeLocations.forEach((loc, idx) => {
-    const opt = document.createElement('option');
-    opt.value = idx;
-    opt.textContent = loc.label || `[Blank Location Row #${idx + 1}]`;
-    opt.draggable = true;
-    if (idx === targetIdx) opt.selected = true;
-    locSelector.appendChild(opt);
+// Helper to minimize DOM paint overheads across all lists templates
+function buildListDOM(containerId, dataArray, activeIndex, storageKey, onRowClick, rebuildCallback) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+
+  const fragment = document.createDocumentFragment();
+  dataArray.forEach((item, idx) => {
+    const row = document.createElement('div');
+    row.className = `drag-item-row ${idx === activeIndex ? 'selected-active' : ''}`;
+    row.textContent = item.label || `[Blank Entry #${idx + 1}]`;
+
+    row.addEventListener('click', () => onRowClick(idx));
+    bindDragLifecycleHandlers(row, idx, dataArray, storageKey, rebuildCallback);
+    fragment.appendChild(row);
   });
-  activeLocIndex = targetIdx;
+  container.appendChild(fragment);
+}
+
+// --------------------------------------------------------
+// CATEGORIES HUB
+// --------------------------------------------------------
+function populateCatList() {
+  buildListDOM('custom-cat-list', runtimeCategories, activeCatIndex, 'customCategories', (idx) => {
+    activeCatIndex = idx;
+    populateCatList();
+    refreshCatForm();
+  }, () => {
+    populateCatList();
+    refreshCatForm();
+  });
+}
+
+function refreshCatForm() {
+  const container = document.getElementById('modal-cat-editor-fields');
+  if (!container) return;
+  if (runtimeCategories.length === 0) {
+    container.innerHTML = `<div style="font-size:12px; color:#9ca3af; text-align:center; padding:20px;">No categories found.</div>`;
+    return;
+  }
+  container.innerHTML = `
+    <div style="margin-bottom: 12px;">
+      <label>Category Label Name</label>
+      <input type="text" id="c-field-lbl" value="${runtimeCategories[activeCatIndex].label || ''}">
+    </div>
+    <button type="button" id="modal-cat-delete-btn" style="background-color:#ef4444; color:white; border:none; padding:8px 14px; border-radius:6px; margin-top:12px; cursor:pointer;">🗑️ Delete Category</button>
+  `;
+
+  document.getElementById('c-field-lbl').addEventListener('input', (e) => {
+    const newName = e.target.value.trim();
+    runtimeCategories[activeCatIndex].label = newName;
+    const activeRow = document.querySelector('#custom-cat-list .selected-active');
+    if (activeRow) activeRow.textContent = newName || `[Blank Entry #${activeCatIndex + 1}]`;
+  });
+
+  document.getElementById('modal-cat-delete-btn').addEventListener('click', () => {
+    runtimeCategories.splice(activeCatIndex, 1);
+    activeCatIndex = Math.max(0, activeCatIndex - 1);
+    populateCatList();
+    refreshCatForm();
+  });
+}
+
+// --------------------------------------------------------
+// MESSAGES HUB
+// --------------------------------------------------------
+function populateMsgList() {
+  buildListDOM('custom-msg-list', runtimeCollection, activeMsgIndex, 'customMessages', (idx) => {
+    activeMsgIndex = idx;
+    populateMsgList();
+    refreshMsgForm();
+  }, () => {
+    populateMsgList();
+    refreshMsgForm();
+  });
 }
 
 function refreshMsgForm() {
+  const container = document.getElementById('modal-editor-fields');
+  if (!container) return;
   if (runtimeCollection.length === 0) {
-    document.getElementById('modal-editor-fields').innerHTML = `<div style="font-size:12px; color:#9ca3af; text-align:center; padding:20px;">No active messages found.</div>`;
+    container.innerHTML = `<div style="font-size:12px; color:#9ca3af; text-align:center; padding:20px;">No messages found.</div>`;
     return;
   }
-  activeMsgIndex = parseInt(msgSelector.value, 10);
   const item = runtimeCollection[activeMsgIndex];
 
-  document.getElementById('modal-editor-fields').innerHTML = `
+  container.innerHTML = `
     <div style="margin-bottom: 12px;">
-      <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Button Name</label>
-      <input type="text" id="m-field-lbl" value="${item.label}" style="width:100%; box-sizing:border-box; padding:8px 12px; font-size:13px; border:1px solid #374151; border-radius:6px; background-color:#282d3a; color:#fff; outline:none;">
-    </div>
-    <div style="margin-bottom: 12px;">
-      <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Geographic Panel Step</label>
-      <button type="button" id="m-toggle-geo" data-state="${item.geo_on == '1' ? '1' : '0'}" style="width:100%; height:34px; font-size:12px; border-radius:6px; font-weight:700; text-align:center; transition:all 0.15s;"></button>
+      <label>Button Name</label>
+      <input type="text" id="m-field-lbl" value="${item.label || ''}">
     </div>
     <div style="margin-bottom: 14px;">
-      <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Conditional Input Fields</label>
-      <select id="m-field-misc" style="width:100%; padding:8px 12px; font-size:13px; border:1px solid #374151; border-radius:6px; background-color:#282d3a; color:#fff; outline:none;">
+      <label>Assigned Category Group</label>
+      <select id="m-field-category">
+        ${runtimeCategories.map(c => `<option value="${c.id}" ${item.category === c.id ? 'selected' : ''}>${c.label}</option>`).join('')}
+      </select>
+    </div>
+    <div style="margin-bottom: 12px;">
+      <label>Geographic Panel Step</label>
+      <div class="switch-wrapper">
+        <span class="switch-label-text" id="switch-status-text">Skipped</span>
+        <button type="button" class="toggle-switch-btn" id="m-toggle-geo" data-state="${item.geo_on == '1' ? '1' : '0'}"></button>
+      </div>
+    </div>
+    <div style="margin-bottom: 14px;">
+      <label>Conditional Input Fields</label>
+      <select id="m-field-misc">
         <option value="0" ${item.misc == "0" ? 'selected' : ''}>None (Copy Immediately)</option>
         <option value="1" ${item.misc == "1" ? 'selected' : ''}>Car Number Only</option>
         <option value="2" ${item.misc == "2" ? 'selected' : ''}>Car Number + Charge %</option>
@@ -91,94 +148,118 @@ function refreshMsgForm() {
       </select>
     </div>
     <div style="margin-bottom: 14px;">
-      <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Template Content Text</label>
-      <textarea id="m-field-cnt" rows="4" style="width:100%; box-sizing:border-box; padding:8px 12px; font-size:12px; border:1px solid #374151; border-radius:6px; background-color:#282d3a; color:#fff; font-family:monospace; resize:vertical; outline:none; line-height:1.5;">${item.content || ''}</textarea>
+      <label>Template Content Text</label>
+      <textarea id="m-field-cnt" rows="5">${item.content || ''}</textarea>
     </div>
-    <button type="button" id="modal-delete-btn" style="background-color:#ef4444; border:none; color:white; font-size:12px; font-weight:600; padding:0 12px; border-radius:6px; width:auto; height:32px; margin-top:4px;">🗑️ Delete Message</button>
+    <button type="button" id="modal-delete-btn" style="background-color:#ef4444; color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer;">🗑️ Delete Message</button>
   `;
 
-  // Attach live handlers to instantly update the array when typing or selecting options
-  ['m-field-lbl', 'm-field-misc', 'm-field-cnt'].forEach(id => {
-    document.getElementById(id).addEventListener('input', stashActiveMsgChanges);
-    if(id === 'm-field-misc') {
-        document.getElementById(id).addEventListener('change', stashActiveMsgChanges);
-    }
+  document.getElementById('m-field-lbl').addEventListener('input', (e) => {
+    const newName = e.target.value.trim();
+    runtimeCollection[activeMsgIndex].label = newName;
+    const activeRow = document.querySelector('#custom-msg-list .selected-active');
+    if (activeRow) activeRow.textContent = newName || `[Blank Entry #${activeMsgIndex + 1}]`;
+  });
+
+  const liveFields = { category: 'm-field-category', misc: 'm-field-misc', content: 'm-field-cnt' };
+  Object.keys(liveFields).forEach(key => {
+    document.getElementById(liveFields[key]).addEventListener('change', (e) => { runtimeCollection[activeMsgIndex][key] = e.target.value; });
+    if (key === 'content') document.getElementById(liveFields[key]).addEventListener('input', (e) => { runtimeCollection[activeMsgIndex][key] = e.target.value; });
   });
 
   const geoToggleBtn = document.getElementById('m-toggle-geo');
-  function updateToggleUI(state) {
-    if (state === "1") {
-      geoToggleBtn.textContent = "📍 Geo Panel: ENABLED";
-      geoToggleBtn.style.backgroundColor = "#10b981";
-      geoToggleBtn.style.color = "#ffffff";
-      geoToggleBtn.style.border = "none";
-      geoToggleBtn.dataset.state = "1";
-    } else {
-      geoToggleBtn.textContent = "⏭️ Geo Panel: SKIPPED";
-      geoToggleBtn.style.backgroundColor = "#374151";
-      geoToggleBtn.style.color = "#9ca3af";
-      geoToggleBtn.style.border = "1px solid #4b5563";
-      geoToggleBtn.dataset.state = "0";
-    }
+  const switchStatusText = document.getElementById('switch-status-text');
+
+  const updateToggleUI = (state) => {
+    const isEnabled = state === "1";
+    geoToggleBtn.dataset.state = isEnabled ? "1" : "0";
+    switchStatusText.textContent = isEnabled ? "Enabled" : "Skipped";
+    switchStatusText.style.color = isEnabled ? "#10b981" : "#9ca3af";
+  };
+
+  if (geoToggleBtn) {
+    updateToggleUI(item.geo_on);
+    geoToggleBtn.addEventListener('click', () => {
+      const newState = geoToggleBtn.dataset.state === "1" ? "0" : "1";
+      updateToggleUI(newState);
+      runtimeCollection[activeMsgIndex].geo_on = newState;
+    });
   }
-  updateToggleUI(geoToggleBtn.dataset.state);
-  geoToggleBtn.addEventListener('click', () => {
-    updateToggleUI(geoToggleBtn.dataset.state === "1" ? "0" : "1");
-    stashActiveMsgChanges();
-  });
 
   document.getElementById('modal-delete-btn').addEventListener('click', () => {
     runtimeCollection.splice(activeMsgIndex, 1);
-    populateMsgDropdown(Math.max(0, activeMsgIndex - 1));
+    activeMsgIndex = Math.max(0, activeMsgIndex - 1);
+    populateMsgList();
     refreshMsgForm();
   });
 }
 
-function refreshLocForm() {
-  if (runtimeLocations.length === 0) {
-    document.getElementById('modal-loc-editor-fields').innerHTML = `<div style="font-size:12px; color:#9ca3af; text-align:center; padding:20px;">No active locations found.</div>`;
-    return;
-  }
-  activeLocIndex = parseInt(locSelector.value, 10);
-  const item = runtimeLocations[activeLocIndex];
-
-  document.getElementById('modal-loc-editor-fields').innerHTML = `
-    <div style="margin-bottom: 12px;">
-      <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Location Label Name</label>
-      <input type="text" id="l-field-lbl" value="${item.label || ''}" style="width:100%; box-sizing:border-box; padding:8px 12px; font-size:13px; border:1px solid #374151; border-radius:6px; background-color:#282d3a; color:#fff; outline:none;">
-    </div>
-    <div style="margin-bottom: 14px;">
-      <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; color:#9ca3af;">Macro Replacement Value ({geo})</label>
-      <input type="text" id="l-field-cnt" value="${item.content || ''}" style="width:100%; box-sizing:border-box; padding:8px 12px; font-size:13px; border:1px solid #374151; border-radius:6px; background-color:#282d3a; color:#fff; outline:none;">
-    </div>
-    <button type="button" id="modal-loc-delete-btn" style="background-color:#ef4444; border:none; color:white; font-size:12px; font-weight:600; padding:0 12px; border-radius:6px; width:auto; height:32px; margin-top:4px;">🗑️ Delete Location</button>
-  `;
-
-  ['l-field-lbl', 'l-field-cnt'].forEach(id => {
-    document.getElementById(id).addEventListener('input', stashActiveLocChanges);
-  });
-
-  document.getElementById('modal-loc-delete-btn').addEventListener('click', () => {
-    runtimeLocations.splice(activeLocIndex, 1);
-    populateLocDropdown(Math.max(0, activeLocIndex - 1));
+// --------------------------------------------------------
+// LOCATIONS HUB
+// --------------------------------------------------------
+function populateLocList() {
+  buildListDOM('custom-loc-list', runtimeLocations, activeLocIndex, 'customLocations', (idx) => {
+    activeLocIndex = idx;
+    populateLocList();
+    refreshLocForm();
+  }, () => {
+    populateLocList();
     refreshLocForm();
   });
 }
 
+function refreshLocForm() {
+  const container = document.getElementById('modal-loc-editor-fields');
+  if (!container) return;
+  if (runtimeLocations.length === 0) {
+    container.innerHTML = `<div style="font-size:12px; color:#9ca3af; text-align:center; padding:20px;">No locations found.</div>`;
+    return;
+  }
+  container.innerHTML = `
+    <div style="margin-bottom: 12px;">
+      <label>Location Label Name</label>
+      <input type="text" id="l-field-lbl" value="${runtimeLocations[activeLocIndex].label || ''}">
+    </div>
+    <div style="margin-bottom: 14px;">
+      <label>Macro Replacement Value ({geo})</label>
+      <input type="text" id="l-field-cnt" value="${runtimeLocations[activeLocIndex].content || ''}">
+    </div>
+    <button type="button" id="modal-loc-delete-btn" style="background-color:#ef4444; color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer;">🗑️ Delete Location</button>
+  `;
+
+  document.getElementById('l-field-lbl').addEventListener('input', (e) => {
+    const newName = e.target.value.trim();
+    runtimeLocations[activeLocIndex].label = newName;
+    const activeRow = document.querySelector('#custom-loc-list .selected-active');
+    if (activeRow) activeRow.textContent = newName || `[Blank Entry #${activeLocIndex + 1}]`;
+  });
+
+  document.getElementById('l-field-cnt').addEventListener('input', (e) => { runtimeLocations[activeLocIndex].content = e.target.value.trim(); });
+
+  document.getElementById('modal-loc-delete-btn').addEventListener('click', () => {
+    runtimeLocations.splice(activeLocIndex, 1);
+    activeLocIndex = Math.max(0, activeLocIndex - 1);
+    populateLocList();
+    refreshLocForm();
+  });
+}
+
+// ==========================================================================
+// OPTIMIZED BACKUP & RESTORE PROCESSORS (settings.js)
+// ==========================================================================
 function triggerJSONDataExport() {
-  stashActiveMsgChanges();
-  stashActiveLocChanges();
-  
+  // Package current dynamic runtime state array configurations into a unified schema profile
   const payload = {
+    categories: runtimeCategories,
     messages: runtimeCollection,
     locations: runtimeLocations
   };
-  
+
   const dataBlob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const downloadLink = document.createElement('a');
-  
+
   downloadLink.href = URL.createObjectURL(dataBlob);
-  downloadLink.download = 'message_manager_backup.json';
+  downloadLink.download = 'message_manager_comprehensive_backup.json';
   document.body.appendChild(downloadLink);
   downloadLink.click();
   document.body.removeChild(downloadLink);
@@ -189,91 +270,129 @@ function processJSONDataUpload(event) {
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onload = function (e) {
     try {
       const parsedData = JSON.parse(e.target.result);
-      
-      if (parsedData && Array.isArray(parsedData.messages)) {
+
+      // Strict schema profile validation checks
+      if (parsedData && Array.isArray(parsedData.messages) && Array.isArray(parsedData.categories)) {
+        runtimeCategories = parsedData.categories;
         runtimeCollection = parsedData.messages;
+
         if (Array.isArray(parsedData.locations)) {
           runtimeLocations = parsedData.locations;
         }
-        
+
+        // Commit configuration payloads straight into local state arrays storage engines
+        localStorage.setItem('customCategories', JSON.stringify(runtimeCategories));
         localStorage.setItem('customMessages', JSON.stringify(runtimeCollection));
         localStorage.setItem('customLocations', JSON.stringify(runtimeLocations));
-        
-        populateMsgDropdown(0);
+
+        // Reset tracking row focus indicators safely back to home index targets
+        activeCatIndex = 0;
+        activeMsgIndex = 0;
+        activeLocIndex = 0;
+
+        // Force fully synchronize dynamic user interface panel listings views
+        populateCatList();
+        populateMsgList();
+        populateLocList();
         refreshMsgForm();
-        populateLocDropdown(0);
-        refreshLocForm();
-        
-        alert('📦 Configuration package uploaded and verified successfully!');
+
+        alert('📦 System database package updated and parsed successfully!');
       } else {
-        alert('Invalid data structure. Make sure your file contains an array named "messages".');
+        alert('Invalid schema profile structure. Make sure your file contains both "categories" and "messages" arrays.');
       }
-    } catch(err) {
-      console.error(err);
-      alert('Failed to parse file tracking data. Check syntax formatting and retry.');
+    } catch (err) {
+      console.error('Import processor exception encountered:', err);
+      alert('Failed to process text tracking file format. Check syntax syntax formatting and retry.');
     }
   };
   reader.readAsText(file);
 }
 
+
+// --------------------------------------------------------
+// PROCESSORS & LIFECYCLE
+// --------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
-  const stored = localStorage.getItem('customMessages');
-  runtimeCollection = stored ? JSON.parse(stored) : [...messages];
+  const hardcodedDefaults = [
+    { id: "cat-onr", label: "ONR" },
+    { id: "cat-mc", label: "Mission Control Alerts" },
+    { id: "cat-gc", label: "Ground Control" }
+  ];
 
-  const storedLocs = localStorage.getItem('customLocations');
-  runtimeLocations = storedLocs ? JSON.parse(storedLocs) : [...locations];
+  const storedCats = localStorage.getItem('customCategories');
+  runtimeCategories = storedCats ? JSON.parse(storedCats) : [...hardcodedDefaults];
+  if (runtimeCategories.length === 0) runtimeCategories = [...hardcodedDefaults];
 
-  exportBtn.addEventListener('click', triggerJSONDataExport);
-  importBtn.addEventListener('click', () => filePicker.click());
-  filePicker.addEventListener('change', processJSONDataUpload);
+  runtimeCollection = localStorage.getItem('customMessages') ? JSON.parse(localStorage.getItem('customMessages')) : [...messages];
+  runtimeLocations = localStorage.getItem('customLocations') ? JSON.parse(localStorage.getItem('customLocations')) : [...locations];
 
-  tabBtnMsgs.addEventListener('click', () => {
-    stashActiveLocChanges();
-    tabBtnMsgs.style.background = '#4f46e5'; tabBtnMsgs.style.color = 'white';
-    tabBtnLocs.style.background = 'transparent'; tabBtnLocs.style.color = '#9ca3af';
-    panelMsgs.style.display = 'block'; panelLocs.style.display = 'none';
-    refreshMsgForm();
+  const tabs = {
+    cats: { btn: document.getElementById('tab-btn-cats'), panel: document.getElementById('settings-panel-cats'), form: 'modal-cat-editor-fields', init: () => { populateCatList(); refreshCatForm(); } },
+    msgs: { btn: document.getElementById('tab-btn-msgs'), panel: document.getElementById('settings-panel-msgs'), form: 'modal-editor-fields', init: () => { populateMsgList(); refreshMsgForm(); } },
+    locs: { btn: document.getElementById('tab-btn-locs'), panel: document.getElementById('settings-panel-locs'), form: 'modal-loc-editor-fields', init: () => { populateLocList(); refreshLocForm(); } }
+  };
+
+  Object.keys(tabs).forEach(key => {
+    const current = tabs[key];
+    if (!current.btn) return;
+    current.btn.addEventListener('click', () => {
+      Object.keys(tabs).forEach(k => {
+        tabs[k].btn.style.background = 'transparent'; tabs[k].btn.style.color = '#9ca3af';
+        tabs[k].panel.style.display = 'none';
+        const form = document.getElementById(tabs[k].form);
+        if (form) form.style.display = 'none';
+      });
+      current.btn.style.background = '#4f46e5'; current.btn.style.color = 'white';
+      current.panel.style.display = 'flex';
+      const formActive = document.getElementById(current.form);
+      if (formActive) formActive.style.display = 'block';
+      current.init();
+    });
   });
 
-  tabBtnLocs.addEventListener('click', () => {
-    stashActiveMsgChanges();
-    tabBtnLocs.style.background = '#4f46e5'; tabBtnLocs.style.color = 'white';
-    tabBtnMsgs.style.background = 'transparent'; tabBtnMsgs.style.color = '#9ca3af';
-    panelLocs.style.display = 'block'; panelMsgs.style.display = 'none';
-    refreshLocForm();
+
+  // Connect execution commands directly to DOM node elements
+  const picker = document.getElementById('hidden-file-picker');
+  const exportBtn = document.getElementById('export-json-btn');
+  const importBtn = document.getElementById('import-json-btn');
+
+  if (exportBtn) exportBtn.addEventListener('click', triggerJSONDataExport);
+  if (importBtn && picker) {
+    importBtn.addEventListener('click', () => picker.click());
+    picker.addEventListener('change', processJSONDataUpload);
+  }
+
+
+  // Structural element creators
+  document.getElementById('modal-cat-create-btn').addEventListener('click', () => {
+    runtimeCategories.push({ id: 'cat-' + Date.now(), label: 'New Category' });
+    activeCatIndex = runtimeCategories.length - 1;
+    populateCatList(); refreshCatForm();
   });
 
   document.getElementById('modal-create-btn').addEventListener('click', () => {
-    stashActiveMsgChanges();
-    runtimeCollection.push({ label: "Custom Message " + (runtimeCollection.length + 1), className: "Custom", misc: "0", geo_on: "0", content: "{geo}<b>Custom text</b> for car#{car}." });
-    populateMsgDropdown(runtimeCollection.length - 1); 
-    refreshMsgForm();
+    runtimeCollection.push({ label: 'New Template', category: 'cat-mc', misc: '0', geo_on: '0', content: '' });
+    activeMsgIndex = runtimeCollection.length - 1;
+    populateMsgList(); refreshMsgForm();
   });
 
   document.getElementById('modal-loc-create-btn').addEventListener('click', () => {
-    stashActiveLocChanges();
-    runtimeLocations.push({ label: "New City " + (runtimeLocations.length + 1), className: "NEW_LOC", content: "<b>NEW AVOS</b>- " });
-    populateLocDropdown(runtimeLocations.length - 1); 
-    refreshLocForm();
+    runtimeLocations.push({ label: 'New Location', content: '' });
+    activeLocIndex = runtimeLocations.length - 1;
+    populateLocList(); refreshLocForm();
   });
 
-  msgSelector.addEventListener('change', () => { stashActiveMsgChanges(); refreshMsgForm(); });
-  locSelector.addEventListener('change', () => { stashActiveLocChanges(); refreshLocForm(); });
-
-  populateMsgDropdown(0); refreshMsgForm();
-  populateLocDropdown(0); refreshLocForm();
-
   document.getElementById('modal-save-btn').addEventListener('click', () => {
-    stashActiveMsgChanges();
-    stashActiveLocChanges();
-
+    localStorage.setItem('customCategories', JSON.stringify(runtimeCategories));
     localStorage.setItem('customMessages', JSON.stringify(runtimeCollection));
     localStorage.setItem('customLocations', JSON.stringify(runtimeLocations));
     window.close();
   });
 
   document.getElementById('modal-cancel-btn').addEventListener('click', () => window.close());
+
+  populateMsgList(); refreshMsgForm();
 });
