@@ -190,7 +190,6 @@ select, input[type="text"], textarea { width: 100%; padding: 10px 12px; font-siz
 select:focus, input[type="text"]:focus, textarea:focus { border-color: var(--accent); }
 label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; color: var(--text-secondary); }
 
-
 /* --- Drag and Drop List Styling Blocks --- */
 .custom-drag-list {
     display: flex;
@@ -232,4 +231,40 @@ label { display: block; font-size: 11px; font-weight: 700; text-transform: upper
 .drag-item-row.dragging-state {
     opacity: 0.4;
     border: 1px dashed var(--accent);
+}
+
+/* --- Visual Rich-Text Editor (contenteditable) --- */
+.rich-editor {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--bg-card);
+    color: #ffffff;
+    outline: none;
+    box-sizing: border-box;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-y: auto;
+    line-height: 1.4;
+}
+
+.rich-editor:focus {
+    border-color: var(--accent);
+}
+
+.rich-editor-area {
+    min-height: 110px;
+}
+
+.rich-editor-single {
+    min-height: 38px;
+}
+
+.rich-editor:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text-secondary);
+    pointer-events: none;
 }

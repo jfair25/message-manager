@@ -217,3 +217,16 @@ button.dragging {
     background-color: var(--bg-hover) !important;    /* Elegant mid-tone focus highlight tracking */
     border-color: #4b5563 !important;                /* Clean hover border highlight accent */
 }
+
+/* --- Hotkey Shortcut Badge on Message Buttons --- */
+.hotkey-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 5px;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    letter-spacing: 0.02em;
+}
+

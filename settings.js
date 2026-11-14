@@ -1,4 +1,4 @@
-import { categories, locations, messages } from './master.js';
+import { categories, locations, messages } from './messages.js';
 
 let runtimeCategories = [];
 let runtimeCollection = [];
@@ -50,6 +50,37 @@ function buildListDOM(containerId, dataArray, activeIndex, storageKey, onRowClic
     fragment.appendChild(row);
   });
   container.appendChild(fragment);
+}
+
+// Helper to configure visual rich-text boxes (Ctrl+B without raw HTML tags)
+function setupRichEditor(element, onUpdateCallback, singleLine = false) {
+  if (!element) return;
+
+  // 1. Sync rich HTML content whenever the user types or formats text
+  element.addEventListener('input', () => {
+    onUpdateCallback(element.innerHTML);
+  });
+
+  // 2. Ensure Ctrl+B / Cmd+B toggles bold visually and triggers state sync
+  element.addEventListener('keydown', (e) => {
+    if (singleLine && e.key === 'Enter') {
+      e.preventDefault();
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+      e.preventDefault();
+      document.execCommand('bold', false, null);
+      onUpdateCallback(element.innerHTML);
+    }
+  });
+
+  // 3. Strip external messy styles when pasting text into the editor
+  element.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const plainText = (e.clipboardData || window.clipboardData).getData('text/plain');
+    document.execCommand('insertText', false, plainText);
+  });
 }
 
 // --------------------------------------------------------
@@ -118,6 +149,8 @@ function refreshMsgForm() {
     return;
   }
   const item = runtimeCollection[activeMsgIndex];
+  const currentMod = item.hkMod || 'none';
+  const currentKey = item.hkKey || '';
 
   container.innerHTML = `
     <div style="margin-bottom: 12px;">
@@ -129,6 +162,19 @@ function refreshMsgForm() {
       <select id="m-field-category">
         ${runtimeCategories.map(c => `<option value="${c.id}" ${item.category === c.id ? 'selected' : ''}>${c.label}</option>`).join('')}
       </select>
+    </div>
+    <div style="margin-bottom: 14px;">
+      <label>Keyboard Shortcut (Popup Hotkey)</label>
+      <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center;">
+        <select id="m-field-hkmod">
+          <option value="none" ${currentMod === 'none' ? 'selected' : ''}>None (Disabled)</option>
+          <option value="ctrl" ${currentMod === 'ctrl' ? 'selected' : ''}>Ctrl +</option>
+          <option value="alt" ${currentMod === 'alt' ? 'selected' : ''}>Alt +</option>
+          <option value="shift" ${currentMod === 'shift' ? 'selected' : ''}>Shift +</option>
+        </select>
+        <input type="text" id="m-field-hkkey" maxlength="1" placeholder="Key (e.g. 2)" value="${currentKey}" ${currentMod === 'none' ? 'disabled' : ''}>
+        <button type="button" id="m-clear-hk-btn" title="Remove Hotkey" style="background-color: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 0 12px; height: 38px;">Clear</button>
+      </div>
     </div>
     <div style="margin-bottom: 12px;">
       <label>Geographic Panel Step</label>
@@ -148,8 +194,9 @@ function refreshMsgForm() {
       </select>
     </div>
     <div style="margin-bottom: 14px;">
-      <label>Template Content Text</label>
-      <textarea id="m-field-cnt" rows="5">${item.content || ''}</textarea>
+      <label>Template Content Text (Highlight & press Ctrl + B to bold)</label>
+      <div>{geo} for Location, {ldap} for LDAP, {date} for Todays Date</div>
+      <div id="m-field-cnt" class="rich-editor rich-editor-area" contenteditable="true" data-placeholder="Enter message template..."></div>
     </div>
     <button type="button" id="modal-delete-btn" style="background-color:#ef4444; color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer;">🗑️ Delete Message</button>
   `;
@@ -161,11 +208,51 @@ function refreshMsgForm() {
     if (activeRow) activeRow.textContent = newName || `[Blank Entry #${activeMsgIndex + 1}]`;
   });
 
-  const liveFields = { category: 'm-field-category', misc: 'm-field-misc', content: 'm-field-cnt' };
-  Object.keys(liveFields).forEach(key => {
-    document.getElementById(liveFields[key]).addEventListener('change', (e) => { runtimeCollection[activeMsgIndex][key] = e.target.value; });
-    if (key === 'content') document.getElementById(liveFields[key]).addEventListener('input', (e) => { runtimeCollection[activeMsgIndex][key] = e.target.value; });
+  // Hotkey Listeners
+  const hkModSelect = document.getElementById('m-field-hkmod');
+  const hkKeyInput = document.getElementById('m-field-hkkey');
+  const clearHkBtn = document.getElementById('m-clear-hk-btn');
+
+  hkModSelect.addEventListener('change', (e) => {
+    const mod = e.target.value;
+    runtimeCollection[activeMsgIndex].hkMod = mod;
+    if (mod === 'none') {
+      runtimeCollection[activeMsgIndex].hkKey = '';
+      hkKeyInput.value = '';
+      hkKeyInput.disabled = true;
+    } else {
+      hkKeyInput.disabled = false;
+      hkKeyInput.focus();
+    }
   });
+
+  hkKeyInput.addEventListener('input', (e) => {
+    const cleanKey = e.target.value.trim().toLowerCase();
+    e.target.value = cleanKey;
+    runtimeCollection[activeMsgIndex].hkKey = cleanKey;
+  });
+
+  clearHkBtn.addEventListener('click', () => {
+    runtimeCollection[activeMsgIndex].hkMod = 'none';
+    runtimeCollection[activeMsgIndex].hkKey = '';
+    hkModSelect.value = 'none';
+    hkKeyInput.value = '';
+    hkKeyInput.disabled = true;
+  });
+
+  const liveFields = { category: 'm-field-category', misc: 'm-field-misc' };
+  Object.keys(liveFields).forEach(key => {
+    document.getElementById(liveFields[key]).addEventListener('change', (e) => {
+      runtimeCollection[activeMsgIndex][key] = e.target.value;
+    });
+  });
+
+  // Initialize visual rich-text editor for Template Content
+  const msgEditor = document.getElementById('m-field-cnt');
+  msgEditor.innerHTML = (item.content || '').replace(/\n/g, '<br>');
+  setupRichEditor(msgEditor, (updatedHtml) => {
+    runtimeCollection[activeMsgIndex].content = updatedHtml;
+  }, false);
 
   const geoToggleBtn = document.getElementById('m-toggle-geo');
   const switchStatusText = document.getElementById('switch-status-text');
@@ -221,8 +308,8 @@ function refreshLocForm() {
       <input type="text" id="l-field-lbl" value="${runtimeLocations[activeLocIndex].label || ''}">
     </div>
     <div style="margin-bottom: 14px;">
-      <label>Macro Replacement Value ({geo})</label>
-      <input type="text" id="l-field-cnt" value="${runtimeLocations[activeLocIndex].content || ''}">
+      <label>Macro Replacement Value (Press Ctrl + B to bold)</label>
+      <div id="l-field-cnt" class="rich-editor rich-editor-single" contenteditable="true" data-placeholder="e.g. 🍑 ATL AVOS- "></div>
     </div>
     <button type="button" id="modal-loc-delete-btn" style="background-color:#ef4444; color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer;">🗑️ Delete Location</button>
   `;
@@ -234,7 +321,11 @@ function refreshLocForm() {
     if (activeRow) activeRow.textContent = newName || `[Blank Entry #${activeLocIndex + 1}]`;
   });
 
-  document.getElementById('l-field-cnt').addEventListener('input', (e) => { runtimeLocations[activeLocIndex].content = e.target.value.trim(); });
+  const locEditor = document.getElementById('l-field-cnt');
+  locEditor.innerHTML = runtimeLocations[activeLocIndex].content || '';
+  setupRichEditor(locEditor, (updatedHtml) => {
+    runtimeLocations[activeLocIndex].content = updatedHtml;
+  }, true);
 
   document.getElementById('modal-loc-delete-btn').addEventListener('click', () => {
     runtimeLocations.splice(activeLocIndex, 1);
@@ -248,7 +339,6 @@ function refreshLocForm() {
 // OPTIMIZED BACKUP & RESTORE PROCESSORS (settings.js)
 // ==========================================================================
 function triggerJSONDataExport() {
-  // Package current dynamic runtime state array configurations into a unified schema profile
   const payload = {
     categories: runtimeCategories,
     messages: runtimeCollection,
@@ -274,7 +364,6 @@ function processJSONDataUpload(event) {
     try {
       const parsedData = JSON.parse(e.target.result);
 
-      // Strict schema profile validation checks
       if (parsedData && Array.isArray(parsedData.messages) && Array.isArray(parsedData.categories)) {
         runtimeCategories = parsedData.categories;
         runtimeCollection = parsedData.messages;
@@ -283,17 +372,14 @@ function processJSONDataUpload(event) {
           runtimeLocations = parsedData.locations;
         }
 
-        // Commit configuration payloads straight into local state arrays storage engines
         localStorage.setItem('customCategories', JSON.stringify(runtimeCategories));
         localStorage.setItem('customMessages', JSON.stringify(runtimeCollection));
         localStorage.setItem('customLocations', JSON.stringify(runtimeLocations));
 
-        // Reset tracking row focus indicators safely back to home index targets
         activeCatIndex = 0;
         activeMsgIndex = 0;
         activeLocIndex = 0;
 
-        // Force fully synchronize dynamic user interface panel listings views
         populateCatList();
         populateMsgList();
         populateLocList();
@@ -305,12 +391,11 @@ function processJSONDataUpload(event) {
       }
     } catch (err) {
       console.error('Import processor exception encountered:', err);
-      alert('Failed to process text tracking file format. Check syntax syntax formatting and retry.');
+      alert('Failed to process text tracking file format. Check syntax formatting and retry.');
     }
   };
   reader.readAsText(file);
 }
-
 
 // --------------------------------------------------------
 // PROCESSORS & LIFECYCLE
@@ -319,7 +404,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const hardcodedDefaults = [
     { id: "cat-onr", label: "ONR" },
     { id: "cat-mc", label: "Mission Control Alerts" },
-    { id: "cat-gc", label: "Ground Control" }
+    { id: "cat-gc", label: "Ground Control" },
+    { id: "cat-misc", label: "Miscellaneous" }
   ];
 
   const storedCats = localStorage.getItem('customCategories');
@@ -353,8 +439,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-
-  // Connect execution commands directly to DOM node elements
   const picker = document.getElementById('hidden-file-picker');
   const exportBtn = document.getElementById('export-json-btn');
   const importBtn = document.getElementById('import-json-btn');
@@ -365,8 +449,6 @@ document.addEventListener('DOMContentLoaded', () => {
     picker.addEventListener('change', processJSONDataUpload);
   }
 
-
-  // Structural element creators
   document.getElementById('modal-cat-create-btn').addEventListener('click', () => {
     runtimeCategories.push({ id: 'cat-' + Date.now(), label: 'New Category' });
     activeCatIndex = runtimeCategories.length - 1;
@@ -374,7 +456,15 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('modal-create-btn').addEventListener('click', () => {
-    runtimeCollection.push({ label: 'New Template', category: 'cat-mc', misc: '0', geo_on: '0', content: '' });
+    runtimeCollection.push({
+      label: 'New Template',
+      category: 'cat-mc',
+      misc: '0',
+      geo_on: '0',
+      content: '',
+      hkMod: 'none',
+      hkKey: ''
+    });
     activeMsgIndex = runtimeCollection.length - 1;
     populateMsgList(); refreshMsgForm();
   });

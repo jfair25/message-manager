@@ -1,4 +1,4 @@
-import { categories, locations, messages, retreiveGlobalMsg } from './master.js';
+import { categories, locations, messages, retreiveGlobalMsg } from './messages.js';
 
 // Global state navigation routers
 let currentActiveView = 'categories';
@@ -41,7 +41,7 @@ function populateCategories() {
 
   // Document fragment grouping optimization to batch single-pass DOM paints
   const fragment = document.createDocumentFragment();
-  
+
   activeCategories.forEach((cat, idx) => {
     const button = document.createElement('button');
     button.textContent = cat.label;
@@ -73,7 +73,7 @@ function populateCategories() {
         const itemToMove = activeCategories[originIdx];
         activeCategories.splice(originIdx, 1);
         activeCategories.splice(destIdx, 0, itemToMove);
-        
+
         // Push state modification straight into memory and re-paint the buttons loop
         localStorage.setItem('customCategories', JSON.stringify(activeCategories));
         populateCategories();
@@ -84,18 +84,41 @@ function populateCategories() {
     button.addEventListener('click', (e) => {
       // Prevent running standard panel click transitions if dropping an item
       if (e.target.classList.contains('dragging')) return;
-      
+
       if (catSection) catSection.setAttribute('hidden', 'true');
       selectedCategory = cat.id;
       populateMsgsFiltered();
     });
-    
+
     fragment.appendChild(button);
   });
-  
+
   DOM.catButtons.appendChild(fragment);
 }
 
+function selectMessageTemplate(buttonHash, isHotkey = false) {
+  if (DOM.catSection) DOM.catSection.setAttribute('hidden', 'true');
+  if (DOM.msgContainer) DOM.msgContainer.setAttribute('hidden', 'true');
+  if (DOM.geoContainer) DOM.geoContainer.setAttribute('hidden', 'true');
+  if (DOM.miscFields) DOM.miscFields.setAttribute('hidden', 'true');
+  if (DOM.backBtnContainer) DOM.backBtnContainer.removeAttribute('hidden');
+
+  selectedCategory = buttonHash.category;
+  localStorage.setItem('globalLabel', buttonHash.label);
+  localStorage.setItem("globalMisc", buttonHash.misc);
+  localStorage.setItem("globalGeo_on", buttonHash.geo_on);
+
+  if (buttonHash.geo_on == 1) {
+    populateGeos(isHotkey);
+  } else {
+    localStorage.setItem("globalGeo", "");
+    miscellaneous();
+    if (isHotkey) {
+      const copyBtn = document.getElementById('copyBtn');
+      if (copyBtn) copyBtn.click();
+    }
+  }
+}
 
 function populateMsgsFiltered() {
   currentActiveView = 'msgs';
@@ -117,8 +140,19 @@ function populateMsgsFiltered() {
   const fragment = document.createDocumentFragment();
   filtered.forEach((buttonHash, idx) => {
     const button = document.createElement('button');
-    button.textContent = buttonHash.label;
     button.className = `btn ${buttonHash.className}`;
+
+    // Display label + optional hotkey badge
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = buttonHash.label;
+    button.appendChild(labelSpan);
+
+    if (buttonHash.hkMod && buttonHash.hkMod !== 'none' && buttonHash.hkKey) {
+      const badge = document.createElement('span');
+      badge.className = 'hotkey-badge';
+      badge.textContent = `${buttonHash.hkMod.toUpperCase()}+${buttonHash.hkKey.toUpperCase()}`;
+      button.appendChild(badge);
+    }
 
     // --- ATTACH DRAG AND DROP HANDLERS TO MESSAGES ---
     button.draggable = true;
@@ -150,7 +184,7 @@ function populateMsgsFiltered() {
         if (globalOriginIdx !== -1 && globalDestIdx !== -1) {
           activeMessages.splice(globalOriginIdx, 1);
           activeMessages.splice(globalDestIdx, 0, itemToMove);
-          
+
           localStorage.setItem('customMessages', JSON.stringify(activeMessages));
           populateMsgsFiltered();
         }
@@ -158,24 +192,14 @@ function populateMsgsFiltered() {
     });
 
     button.addEventListener('click', () => {
-      DOM.msgContainer.setAttribute('hidden', 'true');
-      localStorage.setItem('globalLabel', buttonHash.label);
-      localStorage.setItem("globalMisc", buttonHash.misc);
-      localStorage.setItem("globalGeo_on", buttonHash.geo_on);
-
-      if (buttonHash.geo_on == 1) {
-        populateGeos();
-      } else {
-        localStorage.setItem("globalGeo", "");
-        miscellaneous();
-      }
+      selectMessageTemplate(buttonHash, false);
     });
     fragment.appendChild(button);
   });
   DOM.msgContainer.appendChild(fragment);
 }
 
-function populateGeos() {
+function populateGeos(autoCopyAfterGeo = false) {
   currentActiveView = 'geos';
   if (!DOM.geoContainer) return;
   DOM.geoContainer.innerHTML = '';
@@ -215,9 +239,9 @@ function populateGeos() {
         const itemToMove = activeLocations[originIdx];
         activeLocations.splice(originIdx, 1);
         activeLocations.splice(destIdx, 0, itemToMove);
-        
+
         localStorage.setItem('customLocations', JSON.stringify(activeLocations));
-        populateGeos();
+        populateGeos(autoCopyAfterGeo);
       }
     });
 
@@ -225,12 +249,15 @@ function populateGeos() {
       DOM.geoContainer.setAttribute('hidden', 'true');
       localStorage.setItem("globalGeo", buttonHash.content);
       miscellaneous();
+      if (autoCopyAfterGeo) {
+        const copyBtn = document.getElementById('copyBtn');
+        if (copyBtn) copyBtn.click();
+      }
     });
     fragment.appendChild(button);
   });
   DOM.geoContainer.appendChild(fragment);
 }
-
 
 function miscellaneous() {
   const geo_on = localStorage.getItem("globalGeo_on");
@@ -241,7 +268,7 @@ function miscellaneous() {
   if (DOM.inputs.charge) DOM.inputs.charge.setAttribute('hidden', 'true');
 
   const misc = parseInt(localStorage.getItem("globalMisc"), 10) || 0;
-  
+
   // Clean matching map structure layout conditions
   if (misc === 1 || misc === 2 || misc === 3 || misc === 4) {
     if (DOM.inputs.car) DOM.inputs.car.removeAttribute('hidden');
@@ -330,31 +357,6 @@ function autoExtractClipboardData() {
   }
 }
 
-
-function showCopiedToast() {
-  const toast = document.createElement('div');
-  toast.textContent = 'Copied!';
-  Object.assign(toast.style, {
-    position: 'fixed', bottom: '15px', right: '15px', backgroundColor: '#2c3539',
-    color: '#ffffff', padding: '8px 16px', borderRadius: '6px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.3)', fontFamily: 'sans-serif', fontSize: '13px',
-    zIndex: '999999', transition: 'opacity 0.2s ease, transform 0.2s ease',
-    opacity: '0', transform: 'translateY(5px)'
-  });
-  document.body.appendChild(toast);
-
-  requestAnimationFrame(() => {
-    toast.style.opacity = '1';
-    toast.style.transform = 'translateY(0)';
-  });
-
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateY(5px)';
-    setTimeout(() => toast.remove(), 200);
-  }, 1200);
-}
-
 document.addEventListener('DOMContentLoaded', () => {
   const backBtn = document.querySelector('.backBtn');
   const menuDotsBtn = document.getElementById('menu-dots-btn');
@@ -365,17 +367,37 @@ document.addEventListener('DOMContentLoaded', () => {
   if (copyBtn) {
     copyBtn.addEventListener('click', async () => {
       try {
+        // Sync any visible input values straight to localStorage right before building the message
+        ['ldap', 'car', 'charge'].forEach(fieldId => {
+          const inputEl = DOM.inputs[fieldId]?.querySelector('input');
+          const storageKey = `global${fieldId.charAt(0).toUpperCase() + fieldId.slice(1)}`;
+          if (inputEl && inputEl.value.trim() !== '') {
+            localStorage.setItem(storageKey, inputEl.value.trim());
+          }
+        });
+
         await retreiveGlobalMsg();
-        const msg = localStorage.getItem("globalMsg") || '';
-        const htmlBlob = new Blob([msg], { type: 'text/html' });
-        await navigator.clipboard.write([new ClipboardItem({ 'text/html': htmlBlob })]);
+        const rawHtmlMsg = localStorage.getItem("globalMsg") || '';
+
+        // Create a clean plain-text fallback by stripping HTML tags
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = rawHtmlMsg;
+        const plainTextMsg = tempDiv.textContent || tempDiv.innerText || '';
+
+        const htmlBlob = new Blob([rawHtmlMsg], { type: 'text/html' });
+        const textBlob = new Blob([plainTextMsg], { type: 'text/plain' });
+
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': htmlBlob,
+            'text/plain': textBlob
+          })
+        ]);
 
         if (DOM.successMsg) {
           DOM.successMsg.removeAttribute('hidden');
           DOM.successMsg.textContent = 'Copied!';
         }
-
-        showCopiedToast();
 
         const keysToClean = ['globalLabel', 'globalMisc', 'globalGeo_on', 'globalGeo', 'globalLdap', 'globalCar', 'globalCharge', 'globalMsg'];
         keysToClean.forEach(k => localStorage.removeItem(k));
@@ -423,5 +445,52 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Allow pressing Enter inside input fields to trigger Copy
+  ['ldap', 'car', 'charge'].forEach(fieldId => {
+    const inputEl = DOM.inputs[fieldId]?.querySelector('input');
+    if (inputEl) {
+      inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && copyBtn) {
+          e.preventDefault();
+          copyBtn.click();
+        }
+      });
+    }
+  });
+
+  // Global Hotkey Listener
+  document.addEventListener('keydown', (e) => {
+    // Normalize key using e.code so Shift+2 still matches "2" and Alt+A matches "a"
+    let normalizedKey = e.key.toLowerCase();
+    if (e.code.startsWith('Digit')) {
+      normalizedKey = e.code.replace('Digit', '');
+    } else if (e.code.startsWith('Key')) {
+      normalizedKey = e.code.replace('Key', '').toLowerCase();
+    }
+
+    const savedData = localStorage.getItem('customMessages');
+    const activeMessages = savedData ? JSON.parse(savedData) : messages;
+
+    const matched = activeMessages.find(m => {
+      if (!m.hkMod || m.hkMod === 'none' || !m.hkKey) return false;
+      if (m.hkKey.toLowerCase() !== normalizedKey) return false;
+
+      if (m.hkMod === 'ctrl') return e.ctrlKey && !e.altKey && !e.shiftKey;
+      if (m.hkMod === 'alt') return e.altKey && !e.ctrlKey && !e.shiftKey;
+      if (m.hkMod === 'shift') return e.shiftKey && !e.ctrlKey && !e.altKey;
+      return false;
+    });
+
+    if (matched) {
+      e.preventDefault();
+      // Ensure clipboard extraction has populated Car #, Driver LDAP, and Charge % before building
+      if (!localStorage.getItem('globalCar') && !localStorage.getItem('globalLdap') && !localStorage.getItem('globalCharge')) {
+        autoExtractClipboardData();
+      }
+      selectMessageTemplate(matched, true);
+    }
+  });
+
   populateCategories();
 });
+
